@@ -1,0 +1,28 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Easy-WSL-GUI",
+  "outputfilename": "Easy-WSL-GUI",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "qwq12738qwq",
+    "email": "12738smp@gmail.com"
+  },
+  "platform": "windows", 
+  "wailsjsdir": "./frontend/src",
+  "assetdir": "frontend/dist",
+  "windows": {
+    "certificatepassword": "",
+    "customicon": "",
+    "disableconsole": true,
+    "webviewisreparented": false,
+    "messages": {},
+    "userrequestedexecutionlevel": "requireAdministrator"
+  },
+  "info": {
+    "productVersion": "1.0.0",
+    "companyName": "下北沢会员制餐厅"
+  }
+}
