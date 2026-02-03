@@ -32,7 +32,6 @@ const installSteps = ref([
     { title: '下载资源', status: 'pending', keyword: ['download','下载完成'] }, // 示例关键词
     { title: '解压安装', status: 'pending', keyword: ['installing','解压'] }, 
     { title: '配置用户', status: 'pending', keyword: ['password', '配置用户'] },
-    { title: '迁移系统', status: 'pending', keyword: ['moving','迁移'] },
     { title: '完成', status: 'pending', keyword: ['success','成功'] }
 ])
 

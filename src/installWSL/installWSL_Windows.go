@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,21 +134,49 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 		), nil
 	case "ConfigUser":
 		return exec.Command(
-			"wsl", "-d", Info.Linux_Version, "--",
-			"bash", "-c",
+			"wsl.exe", "-d", Info.Linux_Version, "--",
+			"sh", "-c",
 			fmt.Sprintf(
-				"useradd -m -s /bin/bash %s && echo '%s:%s' | chpasswd && usermod -aG sudo %s",
+				"useradd -m -s /bin/bash %s ",
 				Info.User,
+			),
+		), nil
+	case "ConfigPasswd":
+		return exec.Command(
+			"wsl.exe", "-d", Info.Linux_Version, "--",
+			"sh", "-c",
+			fmt.Sprintf(
+				"echo '%s:%s' | chpasswd ",
 				Info.User, Info.Password,
+			),
+		), nil
+	case "ConfigSudo":
+		return exec.Command(
+			"wsl.exe", "-d", Info.Linux_Version, "--",
+			"sh", "-c",
+			fmt.Sprintf(
+				"chpasswd && usermod -aG sudo %s",
 				Info.User),
 		), nil
+	case "Default":
+		return exec.Command(
+			"wsl.exe", "-d", Info.Linux_Version, "--",
+			"sh", "-c",
+			fmt.Sprintf(
+				`printf "\n[user]\ndefault=%s\n" >> /etc/wsl.conf`,
+				Info.User),
+		), nil
+	case "Stop":
+		return exec.Command(
+			"wsl.exe", "--terminate", Info.Linux_Version,
+		), nil
 	default:
-		return exec.Command(""), errors.New("输入行为状态未注册")
+		return nil, errors.New("输入行为状态未注册")
 	}
 }
 
 // 启动命令函数,将输出转为字节
-func Start_cmd(Info WSLinfo, action string) []byte {
+func Start_cmd(Info WSLinfo, action string) ([]byte, error) {
 	cmd, _ := Init_Admin_PowerShell(Info, action)
 	// 缓冲区
 	var rawBuf bytes.Buffer
@@ -157,9 +186,9 @@ func Start_cmd(Info WSLinfo, action string) []byte {
 	// 隐藏控制台窗口
 	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}
 
-	cmd.Run()
+	err := cmd.Run()
 
-	return rawBuf.Bytes()
+	return rawBuf.Bytes(), err
 }
 
 // 拼接路径字符串
@@ -182,9 +211,13 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	// 	runtime.EventsEmit(ctx, "wsl-error", "无法创建日志文件")
 	// 	return
 	// }
-	if runcode := parseWSLMessage(ctx, Reduce_Unicode(Start_cmd(Info, "Check")), Info); runcode == 2 {
+	line, err := Start_cmd(Info, "Check")
+	if err != nil {
+		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("在检查步骤出错,出错代码: %s", err))
+	}
+	if runcode := parseWSLMessage(ctx, Reduce_Unicode(line), Info); runcode == 2 {
 		return errors.New("发行版已存在")
-	} else if runcode == 6 {
+	} else if runcode == 3 {
 		runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("%s 发行版已安装,开始配置用户", Info.Linux_Version))
 		return errors.New("发行版存在,但未配置默认用户")
 	}
@@ -197,7 +230,7 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 		return errors.New("创建文件失败")
 	}
 
-	// 2. 发起请求
+	// 发起请求
 	resp, err := http.Get(WSLdownloadMap[Info.Linux_Version].URL)
 	if err != nil {
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("下载 %s 发行版失败,请检查网络连接", Info.Linux_Version))
@@ -205,24 +238,38 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("下载失败,网络错误码: %s ", strconv.Itoa(resp.StatusCode)))
+		return errors.New("网络错误")
 	}
 
-	// 3. 获取文件总大小 (Content-Length)
+	// 获取文件总大小 (Content-Length)
 	totalSize := resp.ContentLength
 
-	// 4. 创建本地文件
+	// fileInfo, err := os.Stat(fullpath)
+	// if err == nil {
+	// 	if fileInfo.Size() == totalSize {
+	// 		runtime.EventsEmit(ctx, "wsl-output", "检测到本地文件存在且完整，跳过下载")
+	// 		time.Sleep(2 * time.Second)
+	// 	} else {
+	// 		runtime.EventsEmit(ctx, "wsl-output", "检测到本地文件损坏,正在重新下载")
+	// 		os.Remove(fullpath)
+	// 		time.Sleep(2 * time.Second)
+	// 	}
+	// } else {
+
+	// }
+	// 创建本地文件
 	out, err := os.Create(fullpath)
 	if err != nil {
 
 	}
 	defer out.Close()
-
 	// 哈希计算器
 	hasher := sha256.New()
 	// 数据流写入校验
 	mw := io.MultiWriter(out, hasher)
 
-	// 5. 循环读取并计算进度
+	// 循环读取并计算进度
 	buffer := make([]byte, 64*1024) // 64KB 缓冲区
 	var downloaded int64
 	lastEmit := time.Now()
@@ -311,19 +358,20 @@ func parseWSLMessage(ctx context.Context, l string, Info WSLinfo) int {
 		runtime.EventsEmit(ctx, "wsl-error", "需要权限执行WSL安装命令,检查是否给予权限")
 		return 1
 	case strings.Contains(l, ToL_Version):
-		if strings.Contains(Reduce_Unicode(Start_cmd(Info, "SeachUser")), "default") {
+		line, _ := Start_cmd(Info, "SeachUser")
+		if strings.Contains(Reduce_Unicode(line), "default") {
 			runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("该发行版 %s 已经安装在Windows上", Info.Linux_Version))
 			return 2
 		} else {
 			return 3
 		}
-	case strings.Contains(l, "invaliduser"):
+	case strings.Contains(l, "invalid"):
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("用户名 %s 不符合规范,请重新设置", Info.User))
 		return 4
-	case strings.Contains(l, "istooshort"):
+	case strings.Contains(l, "short"):
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 设置太短", Info.Password))
 		return 5
-	case strings.Contains(l, "dictionarycheck"):
+	case strings.Contains(l, "dictionary"):
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 不符合字典规范,请重新设置", Info.Password))
 		return 6
 	default:
@@ -350,8 +398,43 @@ func WSL2_Installer(ctx context.Context, Info WSLinfo) {
 }
 
 // 配置用户名,密码函数
-func WSL2_Setting_User(ctx context.Context, Info WSLinfo) {
-	Start_cmd(Info, "ConfigUser")
+func WSL2_Setting_User(ctx context.Context, Info WSLinfo) error {
+	line, _ := Start_cmd(Info, "ConfigUser")
+	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
+		time.Sleep(2 * time.Second)
+		return errors.New("用户名配置错误")
+	}
+
+	line, _ = Start_cmd(Info, "ConfigPasswd")
+
+	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
+		time.Sleep(2 * time.Second)
+		return errors.New("密码配置错误")
+	}
+
+	line, _ = Start_cmd(Info, "ConfigSudo")
+
+	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
+		time.Sleep(2 * time.Second)
+		return errors.New("无法配置用户Sudo权限")
+	}
+
+	line, _ = Start_cmd(Info, "Default")
+
+	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
+		time.Sleep(2 * time.Second)
+		return errors.New("无法配置默认用户")
+	}
+
+	line, err := Start_cmd(Info, "Stop")
+	if err != nil {
+		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("暂停发行版出现错误: %s ", err))
+	}
+	// 循环检测wsl发行版是否关停
+
+	time.Sleep(2 * time.Second)
+
+	return nil
 }
 
 func MovingPathWSL(path string) {

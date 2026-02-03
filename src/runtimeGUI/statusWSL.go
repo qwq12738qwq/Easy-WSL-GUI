@@ -4,7 +4,6 @@
 package runtimeGUI
 
 import (
-	"errors"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -34,9 +33,6 @@ func GetWSLallStatus() ([]*List, error) {
 	}
 	// 遍历切片
 	for _, name := range list_name {
-		if name == "" {
-			return nil, errors.New("未安装WSL发行版")
-		}
 		if name == "" {
 			continue // 跳过空行，而不是直接报错返回
 		}

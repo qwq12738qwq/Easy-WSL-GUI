@@ -29,4 +29,4 @@ func UninstallWSL(name string) {}
 func WSL2_Installer(ctx context.Context, Info WSLinfo) {}
 
 // WSL发行版配置用户
-func WSL2_Setting_User(ctx context.Context, Info WSLinfo) {}
+func WSL2_Setting_User(ctx context.Context, Info WSLinfo) error { return nil }

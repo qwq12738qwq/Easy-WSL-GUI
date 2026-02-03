@@ -52,13 +52,20 @@ func (a *App) Install_Bottom(name string, user string, pass string, ver string, 
 	}
 	if err := installWSL.WSL2_Downloader(a.ctx, Info); err != nil {
 		if err.Error() == "发行版存在,但未配置默认用户" {
-			installWSL.WSL2_Setting_User(a.ctx, Info)
+			if installWSL.WSL2_Setting_User(a.ctx, Info) != nil {
+				return err.Error()
+			}
+			runtime.EventsEmit(a.ctx, "wsl-output", "success")
+			return "success"
 		}
 		return ""
 	}
 	time.Sleep(2 * time.Second)
 	installWSL.WSL2_Installer(a.ctx, Info)
-	runtime.EventsEmit(a.ctx, "wsl-output", fmt.Sprintf("发行版 %s 安装成功", ver))
+	if err := installWSL.WSL2_Setting_User(a.ctx, Info); err != nil {
+		return err.Error()
+	}
+	runtime.EventsEmit(a.ctx, "wsl-output", "success")
 	return "success"
 }
 
