@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	run "runtime"
 	"time"
 
 	"Golang-WSL-GUI/src/installWSL"
@@ -94,4 +96,26 @@ func (a *App) UninstallDistro(name string) error {
 	installWSL.UninstallWSL(name)
 	// 执行 wsl --unregister <name>
 	return nil
+}
+
+// 检查管理员权限
+func (a *App) CheckAdmin() bool {
+	if run.GOOS == "windows" {
+		cmd := exec.Command("net", "session")
+		err := cmd.Run()
+		return err == nil
+	}
+	// 非 Windows 系统根据逻辑返回
+	return false
+}
+
+// 检查WSL功能组件
+func (a *App) CheckWSL() bool {
+	if run.GOOS == "windows" {
+		// 检查 wsl.exe 是否存在且可以运行
+		cmd := exec.Command("wsl.exe", "--list", "--quiet")
+		err := cmd.Run()
+		return err == nil
+	}
+	return false
 }

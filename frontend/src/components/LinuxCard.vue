@@ -93,7 +93,7 @@ defineEmits(['action'])
 
 .status-dot.online { 
   background: var(--color-success); 
-  box-shadow: 0 0 8px var(--color-success); 
+  /* box-shadow removed as requested */
 }
 
 .card-body h4 {

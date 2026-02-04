@@ -518,6 +518,30 @@ const getMemPercent = (used, total) => {
   font-weight: 600; color: var(--color-text-primary);
 }
 
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--color-text-primary);
+}
+
+:root[data-theme='dark'] .close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
 
 .warning-section {

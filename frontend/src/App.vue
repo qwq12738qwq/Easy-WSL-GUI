@@ -4,6 +4,11 @@ import { ref } from 'vue'
 import HomeView from './components/HomeView.vue'
 import InstallView from './components/InstallView.vue'
 import SettingView from './components/SettingView.vue'
+import StartupChecks from './components/StartupChecks.vue'
+
+// 启动检查状态
+const checksComplete = ref(false)
+
 // 当前选中的标签
 const currentTab = ref('install')
 
@@ -18,6 +23,11 @@ const views = {
 
 <template>
   <div class="app-wrapper">
+    <!-- 启动检查覆盖层 -->
+    <Transition name="fade">
+      <StartupChecks v-if="!checksComplete" @complete="checksComplete = true" />
+    </Transition>
+
     <aside class="sidebar">
       <div class="brand">WSL-Manager</div>
       <nav class="menu">
