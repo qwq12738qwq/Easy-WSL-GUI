@@ -248,740 +248,449 @@ const getIconUrl = (name) => {
 </script>
 
 <template>
-  <div class="card-grid">
-    <InfoCard 
-      v-for="item in instances" 
-      :key="item.id"
-      :title="item.name"
-      :description="item.desc"
-      :status="item.state"
-      :iconName="item.img_name"
-      @action="handleAction(item)"
-    />
-  </div>
-
-  <Transition name="modal">
-    <div v-if="showModal" class="modal-overlay" @mousedown="handleOverlayMouseDown" @mouseup="handleOverlayMouseUp">
-        <div class="modal-window" @mousedown.stop>
-        
-        <div class="modal-header">
-            <span>
-            {{ currentStepView === 'config' ? '安装配置向导' : '系统部署中' }} 
-            - {{ currentInstance && currentInstance.name }}
-            </span>
-            <button v-if="currentStepView === 'config'" class="close-btn" @click="showModal = false">✕</button>
-        </div>
-        <Transition name="fade" mode="out-in">
-            <div v-if="currentStepView === 'config'" class="config-body">
-                <div class="form-group">
-                    <label>用户名 (UNIX Username)</label>
-                    <input 
-                    v-model="installForm.username" 
-                    type="text" 
-                    placeholder="请输入用户名"
-                    :class="{ 'input-error': errors.username }"
-                    @input="errors.username = ''"
-                    >
-                    <span v-if="errors.username" class="error-msg">{{ errors.username }}</span>
-                </div>
-                <div class="form-group">
-                    <label>密码 (Root Password)</label>
-                    <input 
-                    v-model="installForm.password" 
-                    type="password" 
-                    placeholder="请输入密码"
-                    :class="{ 'input-error': errors.password }"
-                    @input="errors.password = ''"
-                    >
-                    <span v-if="errors.password" class="error-msg">{{ errors.password }}</span>
-                </div>
-
-                <div class="form-group">
-                <label>安装路径 (可选)</label>
-                <div class="path-input-group">
-                    <input 
-                        type="text" 
-                        :value="installForm.installPath" 
-                        placeholder="默认路径 (C:\Users\<用户名>\AppData\Local\Packages\)" 
-                        readonly
-                    >
-                    <button class="browse-btn" @click="handleSelectPath">浏览...</button>
-                </div>
-                </div>
-
-                <div class="form-group">
-                    <label>安装版本</label>
-                    <select v-if="currentInstance.versions && currentInstance.versions.length > 0" 
-                            v-model="installForm.version">
-                        <option v-for="ver in currentInstance.versions" :key="ver.value" :value="ver.value">
-                            {{ ver.label }}
-                        </option>
-                    </select>
-                    
-                    <input v-else type="text" value="Default (Latest)" disabled class="disabled-input">
-                </div>
-
-                <div class="action-bar">
-                    <button class="cancel-btn" @click="showModal = false">取消</button>
-                    <button class="confirm-btn" @click="startInstall">开始安装</button>
-                </div>
-            </div>
-
-        <div v-else class="progress-body">
-            
-            <div v-if="!isError" class="progress-content">
-                <div class="install-hero">
-                    <img :src="getIconUrl(currentInstance?.img_name)" class="hero-icon" />
-                    <div class="hero-info">
-                        <h3>正在安装 {{ currentInstance?.name }}</h3>
-                        <p class="log-detail">{{ currentLogText }}</p>
-                    </div>
-                </div>
-
-                <div class="progress-bar-container">
-                    <div class="progress-track">
-                        <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
-                    </div>
-                    <span class="progress-text">{{ Math.floor(progressPercent) }}%</span>
-                </div>
-
-                <div class="steps-container">
-                    <div v-for="(step, index) in installSteps" :key="index" 
-                        class="step-item" 
-                        :class="step.status">
-                        <div class="step-icon">
-                            <span v-if="step.status === 'finished'">✓</span>
-                            <span v-else-if="step.status === 'processing'" class="spinner"></span>
-                            <span v-else-if="step.status === 'error'">!</span> <span v-else>{{ index + 1 }}</span>
-                        </div>
-                        <span class="step-title">{{ step.title }}</span>
-                        <div v-if="index < installSteps.length - 1" class="step-line" :class="{ 'line-active': step.status === 'finished' }"></div>
-                    </div>
-                </div>
-                
-                <div class="action-bar" v-if="progressPercent >= 100">
-                    <button class="confirm-btn" @click="showModal = false">完成</button>
-                </div>
-            </div>
-
-            <div v-else class="error-container">
-                <div class="error-icon-area">
-                    <span class="error-symbol">⚠️</span>
-                </div>
-                <h3>安装失败</h3>
-                <p class="error-desc">在执行步骤 <b>{{ installSteps[currentStepIndex]?.title }}</b> 时发生错误。</p>
-                
-                <div class="error-box">
-                    <code>{{ errorDetail }}</code>
-                </div>
-
-                <div class="action-bar">
-                    <button class="retry-btn" @click="currentStepView = 'config'">返回设置</button>
-                    <button class="cancel-btn" @click="showModal = false">关闭</button>
-                </div>
-            </div>
-
-        </div>
-        </Transition>
-
-        </div>
+  <div class="install-view-container">
+    <div class="card-grid">
+      <TransitionGroup name="list">
+        <InfoCard 
+          v-for="item in instances" 
+          :key="item.id"
+          :title="item.name"
+          :description="item.desc"
+          :status="item.state"
+          :iconName="item.img_name"
+          @action="handleAction(item)"
+        />
+      </TransitionGroup>
     </div>
-  </Transition>
+
+    <Transition name="modal">
+      <div v-if="showModal" class="modal-overlay" @mousedown="handleOverlayMouseDown" @mouseup="handleOverlayMouseUp">
+          <div class="modal-window" @mousedown.stop>
+          
+          <div class="modal-header">
+              <span>
+              {{ currentStepView === 'config' ? '安装配置向导' : '系统部署中' }} 
+              - {{ currentInstance && currentInstance.name }}
+              </span>
+              <button v-if="currentStepView === 'config'" class="btn-ghost close-btn" @click="showModal = false">✕</button>
+          </div>
+          
+          <Transition name="fade-slide" mode="out-in">
+              <div v-if="currentStepView === 'config'" class="modal-content-body config-body">
+                  <div class="form-group">
+                      <label>用户名 (UNIX Username)</label>
+                      <input 
+                      v-model="installForm.username" 
+                      type="text" 
+                      class="input"
+                      placeholder="请输入用户名"
+                      :class="{ 'input-error': errors.username }"
+                      @input="errors.username = ''"
+                      >
+                      <span v-if="errors.username" class="error-msg">{{ errors.username }}</span>
+                  </div>
+                  <div class="form-group">
+                      <label>密码 (Root Password)</label>
+                      <input 
+                      v-model="installForm.password" 
+                      type="password" 
+                      class="input"
+                      placeholder="请输入密码"
+                      :class="{ 'input-error': errors.password }"
+                      @input="errors.password = ''"
+                      >
+                      <span v-if="errors.password" class="error-msg">{{ errors.password }}</span>
+                  </div>
+
+                  <div class="form-group">
+                  <label>安装路径 (可选)</label>
+                  <div class="path-input-group">
+                      <input 
+                          type="text" 
+                          class="input"
+                          :value="installForm.installPath" 
+                          placeholder="默认路径 (C:\Users\<用户名>\AppData\Local\Packages\)" 
+                          readonly
+                      >
+                      <button class="btn btn-secondary browse-btn" @click="handleSelectPath">浏览...</button>
+                  </div>
+                  </div>
+
+                  <div class="form-group">
+                      <label>安装版本</label>
+                      <select v-if="currentInstance.versions && currentInstance.versions.length > 0" 
+                              v-model="installForm.version" class="input">
+                          <option v-for="ver in currentInstance.versions" :key="ver.value" :value="ver.value">
+                              {{ ver.label }}
+                          </option>
+                      </select>
+                      
+                      <input v-else type="text" value="Default (Latest)" disabled class="input disabled-input">
+                  </div>
+
+                  <div class="action-bar">
+                      <button class="btn btn-secondary" @click="showModal = false">取消</button>
+                      <button class="btn btn-primary" @click="startInstall">开始安装</button>
+                  </div>
+              </div>
+
+          <div v-else class="modal-content-body progress-body">
+              
+              <div v-if="!isError" class="progress-content">
+                  <div class="install-hero">
+                      <img :src="getIconUrl(currentInstance?.img_name)" class="hero-icon animate-pulse" />
+                      <div class="hero-info">
+                          <h3>正在安装 {{ currentInstance?.name }}</h3>
+                          <p class="log-detail">{{ currentLogText }}</p>
+                      </div>
+                  </div>
+
+                  <div class="progress-bar-container">
+                      <div class="progress-track">
+                          <div class="progress-fill" :style="{ width: progressPercent + '%' }">
+                              <div class="progress-glow"></div>
+                          </div>
+                      </div>
+                      <span class="progress-text">{{ Math.floor(progressPercent) }}%</span>
+                  </div>
+
+                  <div class="steps-container">
+                      <div v-for="(step, index) in installSteps" :key="index" 
+                          class="step-item" 
+                          :class="step.status">
+                          <div class="step-icon">
+                              <span v-if="step.status === 'finished'">✓</span>
+                              <span v-else-if="step.status === 'processing'" class="spinner"></span>
+                              <span v-else-if="step.status === 'error'">!</span> <span v-else>{{ index + 1 }}</span>
+                          </div>
+                          <span class="step-title">{{ step.title }}</span>
+                          <div v-if="index < installSteps.length - 1" class="step-line" :class="{ 'line-active': step.status === 'finished' }"></div>
+                      </div>
+                  </div>
+                  
+                  <div class="action-bar" v-if="progressPercent >= 100">
+                      <button class="btn btn-primary" @click="showModal = false">完成</button>
+                  </div>
+              </div>
+
+              <div v-else class="error-container">
+                  <div class="error-icon-area">
+                      <span class="error-symbol">⚠️</span>
+                  </div>
+                  <h3>安装失败</h3>
+                  <p class="error-desc">在执行步骤 <b>{{ installSteps[currentStepIndex]?.title }}</b> 时发生错误。</p>
+                  
+                  <div class="error-box">
+                      <code>{{ errorDetail }}</code>
+                  </div>
+
+                  <div class="action-bar">
+                      <button class="btn btn-danger" @click="currentStepView = 'config'">返回设置</button>
+                      <button class="btn btn-secondary" @click="showModal = false">关闭</button>
+                  </div>
+              </div>
+
+          </div>
+          </Transition>
+
+          </div>
+      </div>
+    </Transition>
+  </div>
 </template>
 
 <style scoped>
-
-/* 亮色模式提升对比度 */
-:root[data-theme='light'] {
-    --card-bg: #fdfdfd;
-    --card-border: #d0d0d0;
-    --text-primary: #111111;   /* 接近纯黑 */
-    --text-secondary: #555555; /* 深灰 */
-    --btn-bg: #eeeeee;
+.install-view-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 深色模式提升对比度 */
-:root[data-theme='dark'] {
-    --card-bg: #252526;
-    --card-border: #444444;
-    --text-primary: #ffffff;   /* 纯白 */
-    --text-secondary: #bbbbbb; /* 浅灰 */
-    --btn-bg: #333333;
-}
-
-  /* 路径选择组合框样式 */
-.path-input-group {
-    display: flex;
-    gap: 10px;
-}
-
-.path-input-group input {
-    flex: 1; /* 输入框占据剩余空间 */
-    /* 继承原有的 input 样式，但 cursor 变一下提示只读 */
-    cursor: default;
-}
-
-.browse-btn {
-    padding: 0 15px;
-    background: #3a3a3a;
-    border: 1px solid #555;
-    color: #eee;
-    border-radius: 6px;
-    cursor: pointer;
-    white-space: nowrap; /* 防止文字换行 */
-    transition: all 0.2s;
-}
-
-.browse-btn:hover {
-    background: #4a4a4a;
-    border-color: #777;
-}
-
-.disabled-input {
-    background-color: #3a3a3a !important;
-    color: #888 !important;
-    cursor: not-allowed;
-    border-color: #444 !important;
-}
-
-.home-container { padding: 20px; height: 100%; box-sizing: border-box; }
-/* 1. 优化网格布局：增加间距，限制最大宽度 */
-/* 1. 卡片网格容器优化：增加呼吸感 */
 .card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 20px;
-    padding: 10px;
-    max-width: 1200px;
-    margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-lg);
+  padding: var(--spacing-xs);
 }
 
-/* 2. 彻底移除所有 3D 和位移效果，改为“质感反馈” */
-:deep(.card) { 
-    background: var(--card-bg); /* 极淡的透明度 */
-    border: 1px solid rgba(255, 255, 255, 0.08); /* 柔和的边框 */
-    border-radius: 12px;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
-    overflow: hidden;
-}
-
-/* 3. 悬浮效果：改为“光影渐变”而非位移 */
-:deep(.card:hover) {
-    transform: none !important; /* 强制禁用任何位移 */
-    background: rgba(255, 255, 255, 0.06); /* 稍微加亮背景 */
-    border-color: var(--accent-color); /* 使用主题色边框 */
-    /* 细腻的蓝色发光阴影 */
-    box-shadow: 0 0 20px rgba(24, 144, 255, 0.15); 
-}
-
-/* 4. 这里的 :deep 选择器确保能穿透到 LinuxCard 组件 */
-:deep(.card-btn) {
-    background: var(--card-btn-bg) !important;
-    color: var(--card-btn-text) !important;
-    font-weight: 600;
-    border: 1px solid var(--card-border);
-    border-radius: 6px;
-    transition: all 0.2s;
-}
-
-:deep(.card:hover .card-btn) {
-    background: #1890ff !important;
-    color: #ffffff !important;
-    border-color: transparent;
-}
-
-/* 标题：加粗并设为高对比度颜色 */
-:deep(.card-body h4) {
-    color: var(--text-primary) !important;
-    font-weight: 700;
-    font-size: 16px;
-    margin-bottom: 6px;
-}
-
-/* 描述文字：提高灰度亮度 */
-:deep(.card-body p) {
-    color: var(--text-secondary) !important;
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-/* 弹窗样式调整 */
+/* Modal Styles */
 .modal-overlay {
   position: fixed; top: 0; left: 0;
   width: 100vw; height: 100vh;
-  background: rgba(0, 0, 0, 0.7); /* 加深一点背景 */
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
   display: flex; justify-content: center; align-items: center;
-  z-index: 999;
-  backdrop-filter: blur(2px); /* 增加一点模糊感 */
-  cursor: default; /* 避免鼠标变为文本选择状 */
-  user-select: none; /* 防止遮罩层本身被选中 */
+  z-index: 1000;
 }
 
 .modal-window {
   width: 520px;
-  background: rgba(30, 30, 30, 0.95);
-  backdrop-filter: blur(10px); /* 磨砂玻璃效果 */
-  overflow: hidden;
-  box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+  background: var(--color-bg-modal);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   display: flex; flex-direction: column;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  user-select: text; 
-  cursor: auto;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
 }
 
 .modal-header {
-  padding: 15px 20px;
-  background: #252526;
-  color: #fff;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--color-bg-hover);
+  border-bottom: 1px solid var(--color-border);
   display: flex; justify-content: space-between; align-items: center;
-  font-size: 15px;
   font-weight: 600;
-  border-bottom: 1px solid #333;
+  color: var(--color-text-primary);
 }
 
-/* === 新增：表单样式 === */
-.config-body {
-    padding: 25px;
-    color: #ccc;
+.close-btn {
+  padding: 4px 8px;
+  font-size: 16px;
+  line-height: 1;
 }
 
+.modal-content-body {
+  padding: var(--spacing-xl);
+  color: var(--color-text-primary);
+}
+
+/* Form Styles */
 .form-group {
-    margin-bottom: 15px;
+  margin-bottom: var(--spacing-md);
 }
 
 .form-group label {
-    display: block;
-    margin-bottom: 8px;
-    font-size: 13px;
-    color: #aaa;
+  display: block;
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
-.form-group input, 
-.form-group select {
-    width: 100%;
-    padding: 12px;
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 6px;
-    color: #fff;
-    font-size: 14px;
-    outline: none;
-    box-sizing: border-box;
-    transition: all 0.2s ease; /* 增加过渡动画 */
-}
-/* 校验失败时的样式 */
-.form-group input.input-error {
-    border-color: #ff4d4f; /* 红色边框 */
-    background: #2a1215;   /* 极淡的红色背景 */
+.path-input-group {
+  display: flex;
+  gap: var(--spacing-sm);
 }
 
-/* 错误文字提示 */
+.input-error {
+  border-color: var(--color-error) !important;
+  background: rgba(255, 77, 79, 0.05);
+}
+
 .error-msg {
-    display: block;
-    margin-top: 5px;
-    color: #ff4d4f;
-    font-size: 12px;
-    animation: shake 0.3s; /* 增加一个小抖动动画提示用户 */
+  display: block;
+  margin-top: 4px;
+  color: var(--color-error);
+  font-size: var(--font-size-xs);
+  animation: shake 0.3s;
 }
 
-/* 简单的抖动动画 */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-5px); }
   75% { transform: translateX(5px); }
 }
 
-/* 焦点样式优化 */
-.form-group input:focus {
-    background: #222;
-    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
-}
-/* 如果聚焦时依然是错误状态，保持红色，或者你可以选择移除这行让它变蓝 */
-.form-group input.input-error:focus {
-    border-color: #ff7875; 
-}
-
-.form-group input:focus,
-.form-group select:focus {
-    border-color: #1890ff;
-    background: #333;
-}
-
 .action-bar {
-    margin-top: 30px;
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
+  margin-top: var(--spacing-xl);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
 }
 
-.cancel-btn {
-    padding: 8px 20px;
-    background: transparent;
-    border: 1px solid #555;
-    color: #ccc;
-    border-radius: 4px;
-    cursor: pointer;
-}
-.cancel-btn:hover { background: #333; }
-
-.confirm-btn {
-    padding: 8px 20px;
-    background: #1890ff;
-    border: none;
-    color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
-}
-.confirm-btn:hover { background: #40a9ff; }
-
-/* === 终端样式优化 === */
-.terminal-body {
-  height: 320px; /* 稍微调低一点 */
-  padding: 15px;
-  overflow-y: auto;
-  background: #000;
-  color: #4af626;
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.log-line { margin-bottom: 4px; word-break: break-all; }
-.prefix { color: #888; margin-right: 8px; }
-
-.cursor-blink {
-    animation: blink 1s infinite;
-    font-weight: bold;
-}
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-
-.close-btn {
-  background: transparent; border: none; color: #888;
-  font-size: 16px; cursor: pointer; padding: 0 5px;
-}
-.close-btn:hover { color: #fff; }
-
-/* 进度视图样式 */
-.progress-body {
-    padding: 30px;
-    background: #1e1e1e;
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
-}
-
+/* Install Progress Styles */
 .install-hero {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
 }
 
 .hero-icon {
-    width: 64px;
-    height: 64px;
-    object-fit: contain;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
 }
 
 .hero-info h3 {
-    margin: 0 0 5px 0;
-    color: #fff;
-    font-size: 18px;
+  margin: 0 0 4px 0;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-lg);
 }
 
 .log-detail {
-    margin: 0;
-    color: #888;
-    font-size: 12px;
-    font-family: 'Consolas', monospace;
-    max-width: 380px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  max-width: 360px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 进度条 */
 .progress-bar-container {
-    display: flex;
-    align-items: center;
-    gap: 15px;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-xl);
 }
 
 .progress-track {
-    flex: 1;
-    height: 6px;
-    background: #000;
-    border-radius: 4px;
-    overflow: hidden;
+  flex: 1;
+  height: 8px;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-full);
+  overflow: hidden;
 }
 
 .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #1890ff, #36cfc9);
-    border-radius: 4px;
-    transition: width 0.4s ease;
-    box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-brand), #36cfc9);
+  border-radius: var(--radius-full);
+  transition: width 0.4s ease;
+  position: relative;
 }
+
+.progress-glow {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: scan 1.5s infinite;
+}
+
+@keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
 .progress-text {
-    color: #fff;
-    font-weight: bold;
-    font-size: 14px;
-    width: 40px;
-    text-align: right;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  width: 40px;
+  text-align: right;
 }
 
-/* 步骤指示器 */
+/* Steps */
 .steps-container {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 10px;
-    position: relative;
+  display: flex;
+  justify-content: space-between;
+  position: relative;
+  padding: 0 10px;
 }
 
 .step-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    position: relative;
-    flex: 1;
-    z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  z-index: 2;
 }
 
 .step-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: #333;
-    border: 2px solid #444;
-    color: #888;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: bold;
-    margin-bottom: 8px;
-    transition: all 0.3s;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-bg-card);
+  border: 2px solid var(--color-border);
+  color: var(--color-text-secondary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--font-size-xs);
+  font-weight: bold;
+  margin-bottom: 8px;
+  transition: all var(--transition-normal);
 }
 
 .step-title {
-    font-size: 12px;
-    color: #666;
-    transition: color 0.3s;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  transition: color var(--transition-normal);
 }
 
-/* 步骤状态变化 */
 .step-item.processing .step-icon {
-    border-color: #1890ff;
-    color: #1890ff;
-    background: #1e1e1e;
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: var(--color-bg-card);
+  box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.15);
 }
-
-.step-item.processing .step-title {
-    color: #fff;
-}
+.step-item.processing .step-title { color: var(--color-text-primary); }
 
 .step-item.finished .step-icon {
-    background: #1890ff;
-    border-color: #1890ff;
-    color: #fff;
-}
-
-.step-item.finished .step-title {
-    color: #ccc;
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+  color: #fff;
 }
 
 .step-item.error .step-icon {
-    border-color: #ff4d4f;
-    color: #ff4d4f;
+  border-color: var(--color-error);
+  color: var(--color-error);
 }
 
-/* 连接线 */
 .step-line {
-    position: absolute;
-    top: 14px; /* 这里的 top 应该是 step-icon 高度的一半 */
-    left: 50%;
-    width: 100%; /* 连接到下一个 */
-    height: 2px;
-    background: #333;
-    z-index: -1;
+  position: absolute; top: 14px; left: 50%; width: 100%; height: 2px;
+  background: var(--color-border); z-index: -1;
 }
+.step-item:last-child .step-line { display: none; }
+.step-line.line-active { background: var(--color-brand); }
 
-/* 最后一个元素不需要向右的线 */
-.step-item:last-child .step-line {
-    display: none;
-}
-
-.step-line.line-active {
-    background: #1890ff;
-}
-
-/* Spinner 动画 */
+/* Spinner */
 .spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid transparent;
-    border-top-color: #1890ff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+  width: 14px; height: 14px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 
-@keyframes spin { 100% { transform: rotate(360deg); } }
-
-/* 错误容器样式 */
+/* Error State */
 .error-container {
-    animation: fadeIn 0.3s ease;
-    text-align: center;
-    padding: 10px 0;
-}
-
-.error-header {
-    margin-bottom: 20px;
-}
-
-.error-icon {
-    font-size: 40px;
-    display: block;
-    margin-bottom: 10px;
-}
-
-.error-header h3 {
-    color: #ff4d4f;
-    margin: 0;
-}
-
-.error-box {
-    background: #2a1215;
-    border: 1px solid #5c2526;
-    border-radius: 6px;
-    padding: 15px;
-    text-align: left;
-    margin-bottom: 20px;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.error-box code {
-    color: #ffccc7;
-    font-family: 'Consolas', monospace;
-    font-size: 13px;
-    word-break: break-all;
-}
-
-.retry-btn {
-    padding: 8px 20px;
-    background: #ff4d4f;
-    border: none;
-    color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
-}
-
-.retry-btn:hover {
-    background: #ff7875;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* 错误界面样式 */
-.error-container {
-    text-align: center;
-    padding: 10px;
-    animation: fadeIn 0.3s ease;
+  text-align: center;
+  padding: 10px 0;
+  animation: fadeIn 0.3s ease;
 }
 
 .error-symbol {
-    font-size: 48px;
-    margin-bottom: 10px;
-    display: block;
+  font-size: 48px;
+  margin-bottom: var(--spacing-md);
+  display: block;
 }
 
 .error-container h3 {
-    color: #ff4d4f;
-    margin: 0 0 10px 0;
+  color: var(--color-error);
+  margin: 0 0 var(--spacing-sm) 0;
 }
 
 .error-desc {
-    color: #aaa;
-    font-size: 13px;
-    margin-bottom: 20px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-lg);
 }
 
 .error-box {
-    background: #2a1215; /* 深红色背景 */
-    border: 1px solid #5c2526;
-    border-radius: 6px;
-    padding: 15px;
-    text-align: left;
-    margin-bottom: 25px;
-    max-height: 150px;
-    overflow-y: auto;
+  background: rgba(255, 77, 79, 0.05);
+  border: 1px solid rgba(255, 77, 79, 0.2);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  text-align: left;
+  margin-bottom: var(--spacing-lg);
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .error-box code {
-    color: #ffccc7;
-    font-family: 'Consolas', monospace;
-    font-size: 12px;
-    white-space: pre-wrap; /* 允许换行 */
-    word-break: break-all;
+  color: var(--color-error);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  word-break: break-all;
 }
 
-.retry-btn {
-    padding: 8px 25px;
-    background: #ff4d4f;
-    border: none;
-    color: white;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
+/* Transitions */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.3s ease;
 }
-.retry-btn:hover { background: #ff7875; }
-
-/* 定义淡入动画 */
-@keyframes fadeIn {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateX(20px);
 }
-
-/* 弹窗整体淡入缩放 */
-.modal-enter-active, .modal-leave-active { transition: all 0.3s ease; }
-.modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(1.05); }
-
-/* 视图切换平滑过渡 */
-.fade-enter-active, .fade-slide-leave-active { transition: all 0.2s ease; }
-.fade-enter-from { opacity: 0; transform: translateX(10px); }
-.fade-leave-to { opacity: 0; transform: translateX(-10px); }
-
-/* 进度条流光动画 */
-.progress-fill { position: relative; overflow: hidden; }
-.progress-glow {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-    animation: scan 1.5s infinite;
-}
-@keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-
-
-
-/* 按钮点击反馈 */
-button:active { transform: scale(0.95); }
-
-/* 2. 入场交错动画 (Stagger) */
-.stagger-enter-active {
-    transition: all 0.5s ease;
-}
-.stagger-enter-from {
-    opacity: 0;
-    transform: translateY(20px);
-}
-/* 利用 style 中定义的 --i 实现延迟 */
-.stagger-enter-active {
-    transition-delay: calc(var(--i) * 0.1s);
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
 }
 </style>

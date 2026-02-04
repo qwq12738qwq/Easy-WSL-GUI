@@ -38,52 +38,33 @@ const views = {
 
 <main class="main-body">
   <section class="content-area">
-    <KeepAlive>
-      <component :is="views[currentTab]" :key="currentTab" />
-    </KeepAlive>
+    <Transition name="page" mode="out-in">
+      <KeepAlive>
+        <component :is="views[currentTab]" :key="currentTab" />
+      </KeepAlive>
+    </Transition>
   </section>
 </main>
   </div>
 </template>
 
 <style>
+/* 引入全局设计系统 */
+@import './assets/styles/main.css';
 
-/* 默认暗色模式变量 */
-:root {
-  --main-text: #eeeeee;
-  --main-bg: #121212;
-  --card-bg: #252526;
-  --card-title: #ffffff;
-  --card-desc: #bbbbbb;
-  --brand-color: #ffffff;
-  --accent-color: #1890ff;
-  --sidebar-bg: #1e1e1e;       /* 侧边栏背景 */
-  --sidebar-text: #ffffff;     /* 侧边栏文字 */
-  --sidebar-hover: #2d2d2d;    /* 悬停背景 */
-}
+/* 移除旧的变量定义，使用 variables.css 中的定义 */
+/* 原有的 :root 和 :root[data-theme='light'] 已迁移至 variables.css */
 
-/* 亮色模式自动切换 */
-:root[data-theme='light'] {
-  --sidebar-bg: #f3f3f3;       /* 浅灰色背景 */
-  --sidebar-text: #333333;     /* 深色文字 */
-  --sidebar-hover: #e0e0e0;    /* 稍微深一点的悬停色 */
-  --main-text: #222222;
-  --main-bg: #f5f5f7;
-  --card-bg: #ffffff;
-  --card-title: #000000;
-  --card-desc: #666666;
-  --brand-color: #1a1a1a;
-}
-/* 将原来组件中的硬编码颜色改为变量 */
+/* 兼容性适配：确保旧组件也能用到新变量 */
 .modal-window {
-  background: var(--sidebar-bg);
-  color: var(--text-color);
+  background: var(--color-bg-modal);
+  color: var(--color-text-primary);
 }
 
 body {
-  font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system, sans-serif;
+  font-family: var(--font-family-base);
   margin: 0;
-  background-color: var(--body-bg);
+  background-color: var(--color-bg-body);
 }
 
 .app-wrapper {
@@ -95,12 +76,13 @@ body {
 /* --- 侧边栏：专业深色风格 --- */
 .sidebar {
   width: 240px;
-  background: var(--sidebar-bg);
-  color: var(--sidebar-text);
+  background: var(--color-bg-sidebar);
+  color: var(--color-text-primary);
   display: flex;
   flex-direction: column;
   z-index: 100;
-  transition: all 0.3s ease;
+  border-right: 1px solid var(--color-border);
+  transition: all var(--transition-normal);
 }
 
 .brand {
@@ -108,11 +90,10 @@ body {
   font-size: 1.1rem;
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: var(--brand-color);
+  color: var(--color-text-primary); /* Adapt to theme */
 }
 
 .menu { 
-  
   padding: 10px; 
   flex: 1;
 }
@@ -120,32 +101,31 @@ body {
 .menu-item {
   padding: 10px 16px;
   margin-bottom: 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 14px;
-  color: #bbbbbb;
-  transition: background 0.15s, color 0.15s;
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
   display: flex;
   align-items: center;
 }
 
 .menu-item:hover {
-  background-color: var(--sidebar-hover);
-  color: white;
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
 .menu-item.active {
-  background-color: var(--accent-color);  /* 激活项保持主题蓝色 */
-  color: white;
+  background-color: var(--color-brand);  /* 激活项保持主题蓝色 */
+  color: #fff;
   font-weight: 500;
-  /* 左侧激活指示条 */
-  box-shadow: inset 4px 0 0 var(--accent-color);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
 }
 
 /* --- 主内容区：干净、通透 --- */
 .main-body {
-  background-color: var(--main-bg);
-  color: var(--main-text);
+  background-color: var(--color-bg-body);
+  color: var(--color-text-primary);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -154,7 +134,7 @@ body {
 
 .content-area {
   flex: 1;
-  padding: 32px; /* 增加留白，显得更大气 */
+  padding: var(--spacing-xl); /* 增加留白，显得更大气 */
   overflow-y: auto;
   position: relative;
 }
@@ -164,18 +144,20 @@ body {
   width: 6px;
 }
 .content-area::-webkit-scrollbar-thumb {
-  background: #ddd;
+  background: var(--color-border-hover);
   border-radius: 10px;
 }
 
 /* --- 卡片美化（应用于子组件） --- */
 .view-card {
-  background: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-  box-shadow: var(--card-shadow);
-  padding: 24px;
+  background: var(--color-bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-lg);
   max-width: 1200px;
   margin: 0 auto;
+  transition: box-shadow var(--transition-normal);
 }
+
 </style>

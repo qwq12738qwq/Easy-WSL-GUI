@@ -1,0 +1,149 @@
+/* =========================================
+   Easy-WSL-GUI Design System - Main
+   ========================================= */
+
+@import './variables.css';
+@import './animations.css';
+
+/* --- Global Reset & Base Styles --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family-base);
+  background-color: var(--color-bg-body);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden; /* App wrapper handles scrolling */
+}
+
+/* --- Typography Utilities --- */
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 0;
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+p {
+  margin-top: 0;
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+/* --- Common Components --- */
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  outline: none;
+  gap: 8px;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--color-brand);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-brand-hover);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+.btn-primary:active:not(:disabled) {
+  background-color: var(--color-brand-active);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--color-text-secondary);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-hover);
+}
+
+.btn-danger {
+  background-color: var(--color-error);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: #ff7875;
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+.btn-ghost:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* Inputs */
+.input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-modal); /* or card */
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+}
+
+.input:disabled {
+  background-color: var(--color-bg-hover);
+  cursor: not-allowed;
+}
+
+/* Cards */
+.card-base {
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+}

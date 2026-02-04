@@ -155,7 +155,7 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 			"wsl.exe", "-d", Info.Linux_Version, "--",
 			"sh", "-c",
 			fmt.Sprintf(
-				"chpasswd && usermod -aG sudo %s",
+				"usermod -aG sudo %s",
 				Info.User),
 		), nil
 	case "Default":
@@ -170,6 +170,11 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 		return exec.Command(
 			"wsl.exe", "--terminate", Info.Linux_Version,
 		), nil
+	case "Status":
+		return exec.Command(
+			"wsl.exe", "--terminate", Info.Linux_Version,
+		), nil
+
 	default:
 		return nil, errors.New("输入行为状态未注册")
 	}

@@ -1,9 +1,6 @@
 <script setup>
 
 const getImageUrl = (name) => {
-  // 打印到浏览器控制台 (F12)
-  console.log("子组件收到的图片名:", name); 
-  
   // URL 参数必须是静态字符串拼接，方便 Vite 在编译时识别
   return new URL(`../assets/icons/${name}.png`, import.meta.url).href
 }
@@ -20,12 +17,10 @@ const props = defineProps({
 
 defineEmits(['action'])
 
-// 处理 Vite 动态资源路径的核心函数
-
 </script>
 
 <template>
-  <div class="card" @click="$emit('action')">
+  <div class="card hover-lift" @click="$emit('action')">
     <div class="card-header">
       <div class="icon-container">
         <img :src="getImageUrl(iconName)" class="local-icon" alt="icon" />
@@ -37,88 +32,97 @@ defineEmits(['action'])
       <p>{{ description }}</p>
     </div>
     <div class="card-footer">
-
-      <button
-      class="card-btn" 
-      @click.stop="$emit('action')">
-      一键安装
-    </button>
-
+      <button class="btn btn-primary card-btn" @click.stop="$emit('action')">
+        一键安装
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 保持你原有的 .card 样式不变 */
-
-.icon-container {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.local-icon {
-  width: 48px;  
-  height: 48px;
-  object-fit: contain; /* 保持图片比例 */
-}
-
-/* 状态灯样式保持... */
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #d9d9d9;
-}
-.status-dot.online { background: #52c41a; box-shadow: 0 0 5px #52c41a; }
-
-/* 其他样式参考你提供的代码... */
-.card-btn {
-  width: 100%;
-  padding: 6px;
-  border: none;
-  background: #f5f5f5;
-  border-radius: 6px;
-  color: #595959;
-  cursor: pointer;
-}
-.card:hover .card-btn { background: #1890ff; color: white; }
-
 .card {
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: var(--spacing-lg);
   height: 100%;
   cursor: pointer;
-  background: #252526; /* 基础底色 */
-  box-sizing: border-box;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  border-color: var(--color-brand);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-md);
+}
+
+.icon-container {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+  padding: 8px;
+}
+
+.local-icon {
+  width: 100%;  
+  height: 100%;
+  object-fit: contain;
 }
 
 .status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  background: var(--color-text-tertiary);
+  transition: all var(--transition-normal);
 }
 
-.status-dot.online { background: #4af626; box-shadow: 0 0 8px #4af626; }
-.status-dot.offline { background: #888; }
+.status-dot.online { 
+  background: var(--color-success); 
+  box-shadow: 0 0 8px var(--color-success); 
+}
 
 .card-body h4 {
-  margin: 12px 0 4px 0;
-  font-size: 16px;
-  color: #fff;
+  margin: var(--spacing-sm) 0 var(--spacing-xs) 0;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-primary);
 }
 
 .card-body p {
-  font-size: 13px;
-  color: #888;
-  line-height: 1.4;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
 }
 
 .card-footer {
-  margin-top: auto; /* 按钮始终在底部 */
-  padding-top: 15px;
+  margin-top: auto;
+  padding-top: var(--spacing-md);
+}
+
+.card-btn {
+  width: 100%;
+  opacity: 0.8;
+  transform: translateY(5px);
+  transition: all var(--transition-normal);
+}
+
+.card:hover .card-btn {
+  opacity: 1;
+  transform: translateY(0);
 }
 </style>

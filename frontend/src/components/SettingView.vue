@@ -11,7 +11,7 @@
           <span class="item-title">外观模式</span>
           <span class="item-desc">切换浅色或深色主题外观</span>
         </div>
-        <button class="theme-toggle" @click="toggleTheme">
+        <button class="btn btn-secondary theme-toggle" @click="toggleTheme">
           {{ isDark ? '🌙 深色模式' : '☀️ 亮色模式' }}
         </button>
       </div>
@@ -39,33 +39,53 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.setting-header { margin-bottom: 24px; }
-.setting-header h3 { margin: 0; color: var(--text-color); }
-.setting-header p { font-size: 13px; color: #888; margin-top: 4px; }
+.setting-header { 
+  margin-bottom: var(--spacing-lg); 
+}
+.setting-header h3 { 
+  margin: 0; 
+  color: var(--color-text-primary); 
+}
+.setting-header p { 
+  font-size: var(--font-size-sm); 
+  color: var(--color-text-secondary); 
+  margin-top: var(--spacing-xs); 
+}
+
+.setting-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
 
 .setting-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
-  background: var(--sidebar-hover);
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.05);
+  padding: var(--spacing-md);
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
 }
 
-.item-info { display: flex; flex-direction: column; gap: 4px; }
-.item-title { font-weight: 600; font-size: 14px; color: var(--text-color); }
-.item-desc { font-size: 12px; color: #888; }
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-title {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+}
+
+.item-desc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
 
 .theme-toggle {
-  padding: 8px 16px;
-  background: var(--accent-color);
-  color: var(--brand-color);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: opacity 0.2s;
+  min-width: 120px;
 }
-.theme-toggle:hover { opacity: 0.9; }
 </style>
