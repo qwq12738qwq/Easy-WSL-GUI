@@ -25,10 +25,23 @@ import (
 
 // 安装WSL发行版信息
 type WSLinfo struct {
-	Linux_Version string
-	Install_Path  string
-	User          string
-	Password      string
+	Linux_Version   string
+	Install_Path    *WSLpath
+	Auth            *WSLAuth
+	DownloadThreads *WSLDownload
+}
+
+type WSLpath struct {
+	Path string
+}
+
+type WSLAuth struct {
+	User     string
+	Password string
+}
+
+type WSLDownload struct {
+	DownloadThreads int
 }
 
 type Download_WSL struct {
@@ -74,6 +87,46 @@ var WSLdownloadMap = map[string]Download_WSL{
 		URL:    "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Container/x86_64/images/Fedora-WSL-Base-43-1.6.x86_64.wsl",
 		Sha256: "220780af9cf225e9645313b4c7b0457a26a38a53285eb203b2ab6188d54d5b82",
 	},
+	"openSUSE-Tumbleweed": {
+		URL:    "https://github.com/openSUSE/WSL-instarball/releases/download/v20260106.0/openSUSE-Tumbleweed-20260103.x86_64-1.224-Build1.224.wsl",
+		Sha256: "0x394be699da2821b331355f3541e237aa3aa00bc4068f33283d68303d8336d484",
+	},
+	"openSUSE-Leap-16.0": {
+		URL:    "https://github.com/openSUSE/WSL-instarball/releases/download/v20251001.0/openSUSE-Leap-16.0-16.0.x86_64-22.57-Build22.57.wsl",
+		Sha256: "0x0d1faa095153beee0a9b5089b0f9aa3d2aec95e2cdcffdeeff84dd54c48b8393",
+	},
+	"AlmaLinux-8": {
+		URL:    "https://github.com/AlmaLinux/wsl-images/releases/download/v8.10.20250415.0/AlmaLinux-8.10_x64_20250415.0.wsl",
+		Sha256: "34c3bc6d3ac693968737c65db52b67f68b8c1a6f8b024450819841a967f59a3d",
+	},
+	"AlmaLinux-9": {
+		URL:    "https://github.com/AlmaLinux/wsl-images/releases/download/v9.7.20251119.0/AlmaLinux-9.7_x64_20251119.0.wsl",
+		Sha256: "0a6588f4f723fcb3edbc37dd3e3e13be8ffe0a5027e47513e3d4d2a4451794e7",
+	},
+	"AlmaLinux-Kitten-10": {
+		URL:    "https://github.com/AlmaLinux/wsl-images/releases/download/v10-kitten.20251030.0/AlmaLinux-Kitten-10_x64_20251030.0.wsl",
+		Sha256: "d765d65076b041f3a67ba60edc37d056eeab2a260aed8e077684e05b78ecd9f5",
+	},
+	"AlmaLinux-10": {
+		URL:    "https://github.com/AlmaLinux/wsl-images/releases/download/v10.1.20251124.0/AlmaLinux-10.1_x64_20251124.0.wsl",
+		Sha256: "24e8fa286a4081979d97e83a227fb89f332bcf731fe4b422679a3b455ab0be37",
+	},
+	"OpenSUSE-Leap-16.0": {
+		URL:    "https://github.com/openSUSE/WSL-instarball/releases/download/v20251001.0/openSUSE-Leap-16.0-16.0.x86_64-22.57-Build22.57.wsl",
+		Sha256: "0x0d1faa095153beee0a9b5089b0f9aa3d2aec95e2cdcffdeeff84dd54c48b8393",
+	},
+	"OpenSUSE-Tumbleweed": {
+		URL:    "https://github.com/openSUSE/WSL-instarball/releases/download/v20260106.0/openSUSE-Tumbleweed-20260103.x86_64-1.224-Build1.224.wsl",
+		Sha256: "0x394be699da2821b331355f3541e237aa3aa00bc4068f33283d68303d8336d484",
+	},
+	"SUSE-Linux-Enterprise-16.0": {
+		URL:    "https://github.com/SUSE/WSL-instarball/releases/download/v20251201.0/SUSE-Linux-Enterprise-16.0-16.0.x86_64-1.9-Build1.9.wsl",
+		Sha256: "0xf0fc07ed3543d3dc24cfb35b4194bbecf98485cefdd720c521034ac1c54bffd3",
+	},
+	"SUSE-Linux-Enterprise-15-SP7": {
+		URL:    "https://github.com/SUSE/WSL-instarball/releases/download/v20251201.0/SUSE-Linux-Enterprise-15-SP7-15.7.x86_64-30.1-Build30.1.wsl",
+		Sha256: "0x60924e13286ed15bdcf9069e3a24d3394fb858954de3bdfcb1ea576900b81b2e",
+	},
 }
 
 // 删除BOM,控制字符,中文(保留空格,英文符号,换行回车)
@@ -82,8 +135,7 @@ func Reduce_Unicode(by_stream []byte) string {
 	finalBytes := make([]byte, 0, len(by_stream))
 
 	for _, b := range by_stream {
-		// 直接在这里过滤：跳过 0x00, BOM(0xFE, 0xFF)
-		// 并且只保留 ASCII 英文范围
+		// 跳过 0x00, BOM(0xFE, 0xFF),并且只保留 ASCII 英文范围
 		if (b >= 32 && b <= 126) || b == 10 {
 			finalBytes = append(finalBytes, b)
 		}
@@ -109,21 +161,17 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 	case "Export":
 		return exec.Command(
 			"wsl.exe",
-			"--export", Info.Linux_Version, Info.Install_Path,
+			"--export", Info.Linux_Version, FilePath_string(Info),
 		), nil
 	case "Shutdown":
 		return exec.Command(
 			"wsl.exe",
 			"-t", Info.Linux_Version,
 		), nil
-	case "Moving":
-		return exec.Command(
-			"",
-		), nil
 	case "Import":
 		return exec.Command(
 			"wsl.exe",
-			"--import", Info.Linux_Version, Info.Install_Path, FilePath_string(Info),
+			"--import", Info.Linux_Version, Info.Install_Path.Path, FilePath_string(Info),
 			"--version", "2",
 		), nil
 	case "SeachUser":
@@ -138,7 +186,7 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 			"sh", "-c",
 			fmt.Sprintf(
 				"useradd -m -s /bin/bash %s ",
-				Info.User,
+				Info.Auth.User,
 			),
 		), nil
 	case "ConfigPasswd":
@@ -147,7 +195,7 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 			"sh", "-c",
 			fmt.Sprintf(
 				"echo '%s:%s' | chpasswd ",
-				Info.User, Info.Password,
+				Info.Auth.User, Info.Auth.Password,
 			),
 		), nil
 	case "ConfigSudo":
@@ -156,7 +204,7 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 			"sh", "-c",
 			fmt.Sprintf(
 				"usermod -aG sudo %s",
-				Info.User),
+				Info.Auth.User),
 		), nil
 	case "Default":
 		return exec.Command(
@@ -164,17 +212,32 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 			"sh", "-c",
 			fmt.Sprintf(
 				`printf "\n[user]\ndefault=%s\n" >> /etc/wsl.conf`,
-				Info.User),
+				Info.Auth.User),
 		), nil
 	case "Stop":
 		return exec.Command(
-			"wsl.exe", "--terminate", Info.Linux_Version,
+			"wsl.exe", "--terminate", Info.Linux_Version, "true",
 		), nil
-	case "Status":
+	case "Start":
 		return exec.Command(
-			"wsl.exe", "--terminate", Info.Linux_Version,
+			"wsl.exe", "-d", Info.Linux_Version,
 		), nil
-
+	case "Version":
+		return exec.Command(
+			"wsl.exe", "--version",
+		), nil
+	case "ShutdownAll":
+		return exec.Command(
+			"wsl.exe", "--shutdown",
+		), nil
+	case "CPUpercent":
+		return exec.Command(
+			"wsl.exe", "-d", Info.Linux_Version, "sh", "-c", "head -n 1 /proc/stat",
+		), nil
+	case "useMem":
+		return exec.Command(
+			"wsl.exe", "-d", Info.Linux_Version, "sh", "-c", "grep -E 'MemTotal|MemAvailable' /proc/meminfo",
+		), nil
 	default:
 		return nil, errors.New("输入行为状态未注册")
 	}
@@ -199,12 +262,18 @@ func Start_cmd(Info WSLinfo, action string) ([]byte, error) {
 // 拼接路径字符串
 func FilePath_string(Info WSLinfo) string {
 	fileName := fmt.Sprintf(`\%s`, Info.Linux_Version)
-	// 文件名拼凑
-	if strings.Contains(WSLdownloadMap[Info.Linux_Version].URL, ".wsl") {
-		fileName += ".wsl"
+	// 根据DownloadThreads是否是空指针判断是安装还是迁移
+	if Info.DownloadThreads != nil {
+		// 文件名拼凑
+		if strings.Contains(WSLdownloadMap[Info.Linux_Version].URL, ".wsl") {
+			fileName += ".wsl"
+		}
+	} else {
+		// 迁移后缀
+		fileName += ".tar"
 	}
 
-	return filepath.Join(Info.Install_Path, fileName)
+	return filepath.Join(Info.Install_Path.Path, fileName)
 
 }
 
@@ -314,45 +383,14 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	// 校验比较
 	if actualSha256 != WSLdownloadMap[Info.Linux_Version].Sha256 {
 		// 如果校验失败，删除残缺文件
-		os.Remove(Info.Install_Path)
-		runtime.EventsEmit(ctx, "wsl-output", "Sha256校验失败,请重新执行")
+		os.Remove(Info.Install_Path.Path)
+		runtime.EventsEmit(ctx, "wsl-error", "Sha256校验失败,请重新执行")
+		return errors.New("Sha256校验失败")
 	}
 
 	runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("下载完成,准备安装 %s", Info.Linux_Version))
 
 	return nil
-}
-
-func parseWSLexitCode(ctx context.Context, code int, Version string) {
-	// 将 int 转为无符号 32 位再转十六进制字符串，方便匹配（如 0x8004032D）
-	hexCode := fmt.Sprintf("0x%08X", uint32(code))
-
-	switch hexCode {
-	case "0x00000000":
-		runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf(`发行版 %s 安装成功`, Version))
-
-	case "0x8004032D": // ERROR_ALREADY_EXISTS
-		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("该发行版 %s 已经安装在Windows上", Version))
-
-	case "0x80070005": // E_ACCESSDENIED
-		runtime.EventsEmit(ctx, "wsl-error", "权限不足：请尝试以管理员身份运行")
-
-	case "0x80370102": // 虚拟化未启用
-		runtime.EventsEmit(ctx, "wsl-error", "虚拟机平台功能未开启或 BIOS 虚拟化被禁用")
-
-	case "0x800701BC": // 需要更新内核
-		runtime.EventsEmit(ctx, "wsl-error", "WSL 2 需要更新其内核组件")
-
-	case "0x8007019E": // 未安装子系统功能
-		runtime.EventsEmit(ctx, "wsl-error", "Windows 子系统功能 (Optional Feature) 未启用")
-
-	case "0x8024402C", "0x80072EE2": // 网络相关
-		runtime.EventsEmit(ctx, "wsl-error", "下载安装包失败，请检查网络连接")
-
-	default:
-		// 兜底：发送未知的十六进制错误码，方便后续排查
-		runtime.EventsEmit(ctx, "wsl-error", "WSL 执行失败，错误代码: "+hexCode)
-	}
 }
 
 func parseWSLMessage(ctx context.Context, l string, Info WSLinfo) int {
@@ -371,13 +409,13 @@ func parseWSLMessage(ctx context.Context, l string, Info WSLinfo) int {
 			return 3
 		}
 	case strings.Contains(l, "invalid"):
-		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("用户名 %s 不符合规范,请重新设置", Info.User))
+		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("用户名 %s 不符合规范,请重新设置", Info.Auth.User))
 		return 4
 	case strings.Contains(l, "short"):
-		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 设置太短", Info.Password))
+		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 设置太短", Info.Auth.Password))
 		return 5
 	case strings.Contains(l, "dictionary"):
-		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 不符合字典规范,请重新设置", Info.Password))
+		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 不符合字典规范,请重新设置", Info.Auth.Password))
 		return 6
 	default:
 		return -1
@@ -385,20 +423,17 @@ func parseWSLMessage(ctx context.Context, l string, Info WSLinfo) int {
 	// runtime.EventsEmit(ctx, "wsl-error", exitCode)
 }
 
-func WSL2_Installer(ctx context.Context, Info WSLinfo) {
+func WSL2_Installer(ctx context.Context, Info WSLinfo) error {
 	runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("正在解压安装发行版 %s ", Info.Linux_Version))
-	cmd, _ := Init_Admin_PowerShell(Info, "Import")
-	var rawBuf bytes.Buffer
-	cmd.Stdout = &rawBuf
-	cmd.Stderr = &rawBuf
+	time.Sleep(2 * time.Second)
+	line, err := Start_cmd(Info, "Import")
 
-	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}
-
-	if err := cmd.Run(); err != nil {
-		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("解压安装出现错误: %s ", err))
-	} else {
-		runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("安装发行版 %s 成功", Info.Linux_Version))
+	if err != nil {
+		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("解压安装出现错误: %s ,报错信息: %s", err.Error(), Reduce_Unicode(line)))
+		return err
 	}
+	runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("安装发行版 %s 成功", Info.Linux_Version))
+	return nil
 
 }
 
@@ -442,11 +477,68 @@ func WSL2_Setting_User(ctx context.Context, Info WSLinfo) error {
 	return nil
 }
 
-func MovingPathWSL(path string) {
-
+// 迁移发行版
+func MovingPathWSL(ctx context.Context, Info WSLinfo) error {
+	runtime.EventsEmit(ctx, "migration:progress", "正在导出发行版......")
+	// 导出
+	line, err := Start_cmd(Info, "Export")
+	if err != nil {
+		runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("导出出现问题: %s", Reduce_Unicode(line)),
+		})
+		os.Remove(FilePath_string(Info))
+		return err
+	}
+	// 卸载
+	runtime.EventsEmit(ctx, "migration:progress", "正在卸载发行版......")
+	line, err = Start_cmd(Info, "Uninstall")
+	if err != nil {
+		runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("卸载出现问题: %s", Reduce_Unicode(line)),
+		})
+		os.Remove(FilePath_string(Info))
+		return err
+	}
+	//导入
+	runtime.EventsEmit(ctx, "migration:progress", "正在迁移发行版......")
+	line, err = Start_cmd(Info, "Import")
+	if err != nil {
+		runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("导入出现问题: %s", Reduce_Unicode(line)),
+		})
+		os.Remove(FilePath_string(Info))
+		return err
+	}
+	// 大致处理下
+	Start_cmd(Info, "Start")
+	time.Sleep(10 * time.Second)
+	// 配置用户
+	runtime.EventsEmit(ctx, "migration:progress", "正在还原用户配置......")
+	line, err = Start_cmd(Info, "ConfigUser")
+	if err != nil {
+		runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
+			"status": "failed",
+			"error":  fmt.Sprintf("设置账户出现问题: %s", Reduce_Unicode(line)),
+		})
+		return err
+	}
+	// 发送完成信息
+	runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
+		"status": "success",
+	})
+	return nil
 }
 
-func UninstallWSL(name string) {
+func UninstallWSL(ctx context.Context, Info WSLinfo) error {
+	line, err := Start_cmd(Info, "Uninstall")
+	if err != nil {
+		runtime.EventsEmit(ctx, "uninstall:failed", fmt.Sprintf("卸载 %s 发行版失败: %s", Info.Linux_Version, Reduce_Unicode(line)))
+		return err
+	}
+	return nil
 	// cmd, _ := Init_Admin_PowerShell(name, "Uninstall")
 
 	// // 创建临时日志文件

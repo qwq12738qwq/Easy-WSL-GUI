@@ -16,6 +16,22 @@ const instances = ref([
   { id: 3, name: 'Kali-Linux', desc: '网络安全工具库', state: 'online', img_name:'Kali-drago', versions: [{ label: 'Latest', value: 'Kali' }] },
   { id: 4, name: 'Arch', desc: '自定义配置', state: 'online', img_name:'Arch', versions: [{ label: 'Latest', value: 'Arch' }] },
   { id: 5, name: 'Fedora', desc: '实验性特性', state: 'offline', img_name:'Fedora', versions: [{ label: 'Latest', value: 'Fedora' }] },
+  { id: 6, name: 'AlmaLinux', desc: '实验性特性', state: 'offline', img_name:'AlmaLinux', 
+    versions: [
+    { label: 'AlmaLinux-10', value: 'AlmaLinux-10' },
+    { label: 'AlmaLinux-Kitten-10', value: 'AlmaLinux-Kitten-10' },
+    { label: 'AlmaLinux-9', value: 'AlmaLinux-9' },
+    { label: 'AlmaLinux-8', value: 'AlmaLinux-8' },
+  ]},
+    { id: 7, name: 'openSUSE', desc: '实验性特性', state: 'offline', img_name:'openSUSE', versions: [
+      { label: 'openSUSE-Leap-16.0', value: 'openSUSE-Leap-16.0' },
+      { label: 'openSUSE-Tumbleweed', value: 'openSUSE-Tumbleweed' }
+    ] },
+  { id: 8, name: 'SUSE', desc: '实验性特性', state: 'offline', img_name:'SUSE', versions: [
+    { label: 'SUSE-Linux-Enterprise-16.0', value: 'SUSE-Linux-Enterprise-16.0' },
+    { label: 'SUSE-Linux-Enterprise-15-SP7', value: 'SUSE-Linux-Enterprise-15-SP7' },
+  ] },
+
 ])
 
 const showModal = ref(false)
@@ -44,7 +60,8 @@ const installForm = reactive({
     username: '',
     password: '',
     version: '',
-    installPath: '' 
+    installPath: '',
+    threadCount: 4 // 默认推荐 4 线程
 })
 
 const handleSelectPath = async () => {
@@ -138,12 +155,24 @@ const startInstall = async () => {
   if (!validateForm()) return
   if (!currentInstance.value) return
 
+  // 重置错误状态和步骤状态，确保重新开始时状态干净
+  isError.value = false
+  errorDetail.value = ''
+  installSteps.value.forEach(s => s.status = 'pending')
+  installSteps.value[0].status = 'processing'
+  currentStepIndex.value = 0
+  progressPercent.value = 2 // Start with a small visual progress
+  currentLogText.value = '准备就绪...'
+
   currentStepView.value = 'install'
   
   try {
     await Install_Bottom(currentInstance.value.name, installForm.username, installForm.password, installForm.version, installForm.installPath)
   } catch (e) {
-    currentLogText.value = "调用失败: " + e
+    // If immediate call fails
+    currentLogText.value = "启动安装失败: " + e
+    isError.value = true
+    errorDetail.value = e.toString()
     installSteps.value[currentStepIndex.value].status = 'error'
   }
 }
@@ -164,9 +193,61 @@ const processLogAndProgress = (line) => {
 
     currentLogText.value = line
     
+    // 尝试解析进度百分比 (假设日志格式如 "Progress: 25.5%" 或 "25%")
+    // 浮点数支持：(\d+(\.\d+)?)
+    const percentMatch = lowerLine.match(/(\d+(\.\d+)?)%/)
+    if (percentMatch) {
+        const p = parseFloat(percentMatch[1])
+        if (!isNaN(p)) {
+             // 只有当解析出的进度大于当前进度时才更新
+             // 限制最大增长，确保不超过当前步骤的最大范围
+             const stepCount = installSteps.value.length
+             const stepWidth = 100 / stepCount
+             const currentStepMax = (currentStepIndex.value + 1) * stepWidth
+             
+             // 将后端 0-100% 映射到当前步骤的范围 (例如步骤1是 0-25%)
+             // 公式: 当前步骤起始 + (后端进度% * 步骤宽度)
+             const mappedPercent = (currentStepIndex.value * stepWidth) + (p / 100 * stepWidth)
+
+             if (mappedPercent > progressPercent.value && mappedPercent <= currentStepMax) {
+                 progressPercent.value = mappedPercent
+             }
+        }
+    } else {
+        // 如果没有明确百分比，尝试通过关键词推断
+        // 由于有高频浮点数更新，这里主要处理整点或特殊标记
+        if (lowerLine.includes('25%')) progressPercent.value = Math.max(progressPercent.value, 25)
+        else if (lowerLine.includes('50%')) progressPercent.value = Math.max(progressPercent.value, 50)
+        else if (lowerLine.includes('75%')) progressPercent.value = Math.max(progressPercent.value, 75)
+        else if (lowerLine.includes('100%')) progressPercent.value = 100
+    }
+    
+    // 重试逻辑：如果检测到 Retry 关键词，回撤进度条
+    const retryKeywords = ['retry', 'retrying', '重试', 'connection reset', 'time out', 'timeout']
+    if (retryKeywords.some(k => lowerLine.includes(k))) {
+        // 简单策略：回退到当前步骤的起始进度，或者减去一定数值
+        // 假设当前步骤索引对应的基础进度
+        const currentStepBase = (currentStepIndex.value / installSteps.value.length) * 100
+        // 回退到该步骤的起点，给用户“重新开始这段”的感觉
+        progressPercent.value = Math.max(currentStepBase, 5) 
+        currentLogText.value = "检测到网络波动，正在重试..."
+        return // 跳过后续增长逻辑
+    }
+
     // 1. 只有不在黑名单中时，才进行模拟增长
-    if (!shouldSkip && progressPercent.value < 95) {
-        progressPercent.value += 1.5 
+    // 修改策略：如果已经有高频百分比更新（percentMatch），则不进行模拟增长，避免冲突
+    // 只有在没有解析出百分比时，才启用模拟增长
+    // 并且限制模拟增长不能超过当前步骤的 90% (预留给真实完成信号)
+    if (!percentMatch && !shouldSkip) {
+        const stepCount = installSteps.value.length
+        const stepWidth = 100 / stepCount
+        const currentStepMax = (currentStepIndex.value + 1) * stepWidth
+        // 限制模拟增长的上限为当前步骤结束前的 5% 缓冲
+        const simulationLimit = currentStepMax - (stepWidth * 0.1)
+        
+        if (progressPercent.value < simulationLimit) {
+            progressPercent.value += 0.5 // 减缓模拟增长速度
+        }
     }
     
     // 遍历所有步骤，看是否命中关键词
@@ -328,6 +409,23 @@ const getIconUrl = (name) => {
                       <input v-else type="text" value="Default (Latest)" disabled class="input disabled-input">
                   </div>
 
+                  <!-- 线程数选择 (优化 2) -->
+                  <div class="form-group">
+                      <label>下载线程数 <span class="recommend-badge">推荐: 4</span></label>
+                      <div class="thread-selector">
+                          <button 
+                              v-for="n in 8" 
+                              :key="n"
+                              class="thread-btn"
+                              :class="{ 'active': installForm.threadCount === n, 'recommended': n === 4 }"
+                              @click="installForm.threadCount = n"
+                              :title="n === 4 ? '推荐配置' : n + ' 线程'"
+                          >
+                              {{ n }}
+                          </button>
+                      </div>
+                  </div>
+
                   <div class="action-bar">
                       <button class="btn btn-secondary" @click="showModal = false">取消</button>
                       <button class="btn btn-primary" @click="startInstall">开始安装</button>
@@ -385,7 +483,7 @@ const getIconUrl = (name) => {
                   </div>
 
                   <div class="action-bar">
-                      <button class="btn btn-danger" @click="currentStepView = 'config'">返回设置</button>
+                      <button class="btn btn-danger" @click="() => { currentStepView = 'config'; isError = false; }">返回设置</button>
                       <button class="btn btn-secondary" @click="showModal = false">关闭</button>
                   </div>
               </div>
@@ -421,6 +519,7 @@ const getIconUrl = (name) => {
   backdrop-filter: blur(4px);
   display: flex; justify-content: center; align-items: center;
   z-index: 1000;
+  transition: opacity 0.3s ease;
 }
 
 .modal-window {
@@ -431,6 +530,12 @@ const getIconUrl = (name) => {
   display: flex; flex-direction: column;
   border: 1px solid var(--color-border);
   overflow: hidden;
+  animation: modal-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .modal-header {
@@ -443,9 +548,20 @@ const getIconUrl = (name) => {
 }
 
 .close-btn {
-  padding: 4px 8px;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  display: flex; align-items: center; justify-content: center;
   font-size: 16px;
-  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.close-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
 }
 
 .modal-content-body {
@@ -692,5 +808,97 @@ const getIconUrl = (name) => {
 .fade-slide-leave-to {
   opacity: 0;
   transform: translateX(-20px);
+}
+
+/* --- Input Redesign (优化 2) --- */
+.input {
+  width: 100%;
+  padding: 10px 12px; /* 增加内边距 */
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); /* 圆角 */
+  background-color: var(--color-bg-input, var(--color-bg-card)); 
+  color: var(--color-text-primary);
+  font-size: 14px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* 增加层次感 */
+}
+
+.input:hover {
+  border-color: var(--color-text-secondary);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px rgba(24, 144, 255, 0.15); /* 聚焦高亮 */
+}
+
+.input:disabled, .disabled-input {
+  background-color: var(--color-bg-hover);
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
+}
+
+/* --- Thread Selector Styles --- */
+.recommend-badge {
+    font-size: 11px;
+    background: rgba(24, 144, 255, 0.1);
+    color: var(--color-brand);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+    font-weight: 600;
+}
+
+.thread-selector {
+    display: flex;
+    gap: 4px;
+    background: var(--color-bg-hover); /* 背景底色 */
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+}
+
+.thread-btn {
+    flex: 1;
+    height: 32px;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    position: relative;
+}
+
+.thread-btn:hover:not(.active) {
+    background: rgba(125, 125, 125, 0.1);
+    color: var(--color-text-primary);
+}
+
+.thread-btn.active {
+    background: var(--color-bg-card); /* 激活时凸起 */
+    color: var(--color-brand);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+    font-weight: 600;
+    border-color: rgba(0,0,0,0.02);
+}
+
+/* 推荐的小圆点标记 */
+.thread-btn.recommended:not(.active)::after {
+    content: "";
+    position: absolute;
+    bottom: 4px;
+    width: 4px;
+    height: 4px;
+    background: var(--color-text-secondary);
+    border-radius: 50%;
+    opacity: 0.4;
 }
 </style>

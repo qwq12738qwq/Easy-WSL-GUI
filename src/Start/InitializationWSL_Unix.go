@@ -8,3 +8,6 @@ func ShowFatalError(err error) {}
 
 // 详细检测wsl
 func DetectWSL() error { return nil }
+
+// 启动时生成.wslconfig文件
+func EnsureWslConfigExists() error { return nil }

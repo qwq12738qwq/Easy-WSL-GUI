@@ -6,6 +6,10 @@ export function CheckAdmin() {
   return window['go']['main']['App']['CheckAdmin']();
 }
 
+export function CheckAndUpdateWSL() {
+  return window['go']['main']['App']['CheckAndUpdateWSL']();
+}
+
 export function CheckWSL() {
   return window['go']['main']['App']['CheckWSL']();
 }
@@ -22,12 +26,40 @@ export function GetPath(arg1) {
   return window['go']['main']['App']['GetPath'](arg1);
 }
 
-export function Install_Bottom(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['Install_Bottom'](arg1, arg2, arg3, arg4, arg5);
+export function GetPerformanceConfig() {
+  return window['go']['main']['App']['GetPerformanceConfig']();
+}
+
+export function GetWSLVersion() {
+  return window['go']['main']['App']['GetWSLVersion']();
+}
+
+export function Install_Bottom(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['Install_Bottom'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function OpenDistroFolder(arg1) {
+  return window['go']['main']['App']['OpenDistroFolder'](arg1);
+}
+
+export function SavePerformanceConfig(arg1) {
+  return window['go']['main']['App']['SavePerformanceConfig'](arg1);
 }
 
 export function SelectDirectory() {
   return window['go']['main']['App']['SelectDirectory']();
+}
+
+export function ShowWSLInfo() {
+  return window['go']['main']['App']['ShowWSLInfo']();
+}
+
+export function StartDistro(arg1) {
+  return window['go']['main']['App']['StartDistro'](arg1);
+}
+
+export function StartMigration(arg1) {
+  return window['go']['main']['App']['StartMigration'](arg1);
 }
 
 export function UninstallDistro(arg1) {

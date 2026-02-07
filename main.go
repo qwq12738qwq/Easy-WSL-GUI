@@ -1,31 +1,24 @@
 package main
 
 import (
+	start "Golang-WSL-GUI/src/Start"
 	"embed"
-	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-
-	start "Golang-WSL-GUI/src/Start"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
-	// 1. 在启动 Wails 之前先检测
-	if err := start.DetectWSL(); err != nil {
-		start.ShowFatalError(err)
-		os.Exit(1)
-	}
 	// Create an instance of the app structure
 	app := NewApp()
-
+	start.EnsureWslConfigExists()
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "Golang-WSL-GUI",
+		Title:  "Easy-WSL-GUI",
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
