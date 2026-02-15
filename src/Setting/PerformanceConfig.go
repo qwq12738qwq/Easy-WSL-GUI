@@ -35,12 +35,12 @@ type PerformanceConfig struct {
 	NestedVirtualization    bool   `json:"nestedVirtualization"`
 	VmIdleTimeout           int    `json:"vmIdleTimeout"`
 	DnsProxy                bool   `json:"dnsProxy"`
-	DefaultVhdSize          int    `json:"defaultVhdSize"`
 	PageReporting           bool   `json:"pageReporting"`
 	BestEffortDnsParsing    bool   `json:"bestEffortDnsParsing"`
 	DnsTunnelingIpAddress   string `json:"dnsTunnelingIpAddress"`
 	InitialAutoProxyTimeout int    `json:"initialAutoProxyTimeout"`
 	IgnoredPorts            string `json:"ignoredPorts"`
+	UseWindowsDnsCli        bool   `json:"useWindowsDnsCli"`
 }
 
 func Wriding_PerformanceConfig(config PerformanceConfig) error {
@@ -51,65 +51,111 @@ func Wriding_PerformanceConfig(config PerformanceConfig) error {
 
 	configFile := filepath.Join(userHome, ".wslconfig")
 
-	content := fmt.Sprintf(`[wsl2]
-memory=%dGB
-swap=%dGB
-swapFile=%s
-processors=%d
-networkingMode=%s
-localhostForwarding=%v
-guiApplications=%v
-debugConsole=%v
-kernel=%s
-kernelModules=%s
-kernelCommandLine=%s
-safeMode=%v
-maxCrashDumpCount=%d
-nestedVirtualization=%v
-vmIdleTimeout=%d
-dnsProxy=%v
-defaultVhdSize=%dGB
-pageReporting=%v
-firewall=%v
-dnsTunneling=%v
-autoProxy=%v
+	var sb strings.Builder
+	sb.WriteString("[wsl2]\n")
 
-[experimental]
-autoMemoryReclaim=%s
-sparseVhd=%v
-bestEffortDnsParsing=%v
-dnsTunnelingIpAddress=%s
-initialAutoProxyTimeout=%d
-hostAddressLoopback=%v
-`,
-		config.MemoryLimit,
-		config.Swap,
-		config.SwapFile,
-		config.ProcessorCount,
-		config.NetworkMode,
-		config.LocalhostForwarding,
-		config.GuiApplications,
-		config.DebugConsole,
-		config.Kernel,
-		config.KernelModules,
-		config.KernelCommandLine,
-		config.SafeMode,
-		config.MaxCrashDumpCount,
-		config.NestedVirtualization,
-		config.VmIdleTimeout,
-		config.DnsProxy,
-		config.DefaultVhdSize,
-		config.PageReporting,
-		config.Firewall,
-		config.DnsTunneling,
-		config.AutoProxy,
-		config.AutoMemoryReclaim,
-		config.SparseVhd,
-		config.BestEffortDnsParsing,
-		config.DnsTunnelingIpAddress,
-		config.InitialAutoProxyTimeout,
-		config.HostAddressLoopback,
-	)
+	if config.MemoryLimit > 0 {
+		sb.WriteString(fmt.Sprintf("memory=%dGB\n", config.MemoryLimit))
+	}
+
+	// Swap: -1 or <0 means default/unmanaged. 0 means disabled.
+	if config.Swap >= 0 {
+		sb.WriteString(fmt.Sprintf("swap=%dGB\n", config.Swap))
+	}
+
+	if config.SwapFile != "" {
+		sb.WriteString(fmt.Sprintf("swapFile=%s\n", config.SwapFile))
+	}
+	if config.ProcessorCount > 0 {
+		sb.WriteString(fmt.Sprintf("processors=%d\n", config.ProcessorCount))
+	}
+	if config.NetworkMode != "" {
+		sb.WriteString(fmt.Sprintf("networkingMode=%s\n", config.NetworkMode))
+	}
+
+	// Booleans: Only write if different from default
+	if !config.LocalhostForwarding {
+		sb.WriteString(fmt.Sprintf("localhostForwarding=%v\n", config.LocalhostForwarding))
+	}
+	if !config.GuiApplications {
+		sb.WriteString(fmt.Sprintf("guiApplications=%v\n", config.GuiApplications))
+	}
+	if config.DebugConsole {
+		sb.WriteString(fmt.Sprintf("debugConsole=%v\n", config.DebugConsole))
+	}
+
+	if config.Kernel != "" {
+		sb.WriteString(fmt.Sprintf("kernel=%s\n", config.Kernel))
+	}
+	if config.KernelModules != "" {
+		sb.WriteString(fmt.Sprintf("kernelModules=%s\n", config.KernelModules))
+	}
+	if config.KernelCommandLine != "" {
+		sb.WriteString(fmt.Sprintf("kernelCommandLine=%s\n", config.KernelCommandLine))
+	}
+
+	if config.SafeMode {
+		sb.WriteString(fmt.Sprintf("safeMode=%v\n", config.SafeMode))
+	}
+
+	if config.MaxCrashDumpCount > 0 {
+		sb.WriteString(fmt.Sprintf("maxCrashDumpCount=%d\n", config.MaxCrashDumpCount))
+	}
+
+	if !config.NestedVirtualization {
+		sb.WriteString(fmt.Sprintf("nestedVirtualization=%v\n", config.NestedVirtualization))
+	}
+
+	if config.VmIdleTimeout > 0 {
+		sb.WriteString(fmt.Sprintf("vmIdleTimeout=%d\n", config.VmIdleTimeout))
+	}
+
+	if !config.DnsProxy {
+		sb.WriteString(fmt.Sprintf("dnsProxy=%v\n", config.DnsProxy))
+	}
+
+	sb.WriteString(fmt.Sprintf("pageReporting=%v\n", config.PageReporting))
+
+	if !config.Firewall {
+		sb.WriteString(fmt.Sprintf("firewall=%v\n", config.Firewall))
+	}
+	if config.DnsTunneling {
+		sb.WriteString(fmt.Sprintf("dnsTunneling=%v\n", config.DnsTunneling))
+	}
+	if !config.AutoProxy {
+		sb.WriteString(fmt.Sprintf("autoProxy=%v\n", config.AutoProxy))
+	}
+
+	sb.WriteString("\n[experimental]\n")
+
+	if config.AutoMemoryReclaim != "" {
+		sb.WriteString(fmt.Sprintf("autoMemoryReclaim=%s\n", config.AutoMemoryReclaim))
+	}
+
+	if config.SparseVhd {
+		sb.WriteString(fmt.Sprintf("sparseVhd=%v\n", config.SparseVhd))
+	}
+	if !config.BestEffortDnsParsing {
+		sb.WriteString(fmt.Sprintf("bestEffortDnsParsing=%v\n", config.BestEffortDnsParsing))
+	}
+
+	if config.DnsTunnelingIpAddress != "" {
+		sb.WriteString(fmt.Sprintf("dnsTunnelingIpAddress=%s\n", config.DnsTunnelingIpAddress))
+	}
+
+	if config.InitialAutoProxyTimeout > 0 {
+		sb.WriteString(fmt.Sprintf("initialAutoProxyTimeout=%d\n", config.InitialAutoProxyTimeout))
+	}
+
+	if !config.HostAddressLoopback {
+		sb.WriteString(fmt.Sprintf("hostAddressLoopback=%v\n", config.HostAddressLoopback))
+	}
+
+	if config.UseWindowsDnsCli {
+		sb.WriteString(fmt.Sprintf("useWindowsDnsCli=%v\n", config.UseWindowsDnsCli))
+	}
+
+	content := sb.String()
 
 	if config.IgnoredPorts != "" {
 		content += fmt.Sprintf("ignoredPorts=%s\n", config.IgnoredPorts)
@@ -125,24 +171,25 @@ hostAddressLoopback=%v
 func Rading_PerformanceConfig() PerformanceConfig {
 	// 1. 初始化默认值 (与前端 stores/performance.js 保持一致)
 	config := PerformanceConfig{
-		MemoryLimit:             8,
-		Swap:                    0,
-		SwapFile:                `C:\\wsl.swap`,
-		ProcessorCount:          4,
-		NetworkMode:             "mirrored",
-		LocalhostForwarding:     true,
-		AutoMemoryReclaim:       "dropCache",
-		SparseVhd:               true,
-		DnsTunneling:            true,
-		Firewall:                true,
-		AutoProxy:               true,
-		HostAddressLoopback:     true,
-		GuiApplications:         true,
-		DebugConsole:            false,
+		MemoryLimit:         8,
+		Swap:                0,
+		SwapFile:            `C:\\wsl.swap`,
+		ProcessorCount:      4,
+		NetworkMode:         "mirrored",
+		LocalhostForwarding: true,
+		AutoMemoryReclaim:   "dropCache",
+		SparseVhd:           true,
+		DnsTunneling:        true,
+		Firewall:            true,
+		AutoProxy:           true,
+		HostAddressLoopback: true,
+		GuiApplications:     true,
+		DebugConsole:        false, NestedVirtualization: true,
 		VmIdleTimeout:           60000,
-		DefaultVhdSize:          1024,
+		PageReporting:           true,
 		DnsTunnelingIpAddress:   "10.255.255.254",
 		InitialAutoProxyTimeout: 1000,
+		UseWindowsDnsCli:        false,
 	}
 
 	// 2. 获取用户主目录路径
@@ -222,8 +269,6 @@ func Rading_PerformanceConfig() PerformanceConfig {
 			}
 		case "dnsProxy":
 			config.DnsProxy = parseBool(value)
-		case "defaultVhdSize":
-			config.DefaultVhdSize = parseSizeToGB(value)
 		case "pageReporting":
 			config.PageReporting = parseBool(value)
 		case "firewall":
@@ -248,6 +293,8 @@ func Rading_PerformanceConfig() PerformanceConfig {
 			config.HostAddressLoopback = parseBool(value)
 		case "ignoredPorts":
 			config.IgnoredPorts = value
+		case "useWindowsDnsCli":
+			config.UseWindowsDnsCli = parseBool(value)
 		}
 	}
 

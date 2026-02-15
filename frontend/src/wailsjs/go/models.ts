@@ -16,6 +16,83 @@ export namespace main {
 	        this.distroName = source["distroName"];
 	    }
 	}
+	export class SystemSpecs {
+	    totalMemoryGB: number;
+	    logicalCores: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SystemSpecs(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalMemoryGB = source["totalMemoryGB"];
+	        this.logicalCores = source["logicalCores"];
+	    }
+	}
+
+}
+
+export namespace network {
+	
+	export class DistroVersion {
+	    label: string;
+	    value: string;
+	    url: string;
+	    sha256: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DistroVersion(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.value = source["value"];
+	        this.url = source["url"];
+	        this.sha256 = source["sha256"];
+	    }
+	}
+	export class DistroItem {
+	    id: number;
+	    name: string;
+	    desc: string;
+	    state: string;
+	    img_name: string;
+	    versions: DistroVersion[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DistroItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.desc = source["desc"];
+	        this.state = source["state"];
+	        this.img_name = source["img_name"];
+	        this.versions = this.convertValues(source["versions"], DistroVersion);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

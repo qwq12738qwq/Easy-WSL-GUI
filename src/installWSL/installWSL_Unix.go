@@ -13,6 +13,7 @@ type WSLinfo struct {
 	Install_Path    *WSLpath
 	Auth            *WSLAuth
 	DownloadThreads *WSLDownload
+	DownloadInfo    *Download_WSL
 }
 
 type WSLpath struct {
@@ -28,8 +29,15 @@ type WSLDownload struct {
 	DownloadThreads int
 }
 
+type Download_WSL struct {
+	URL    string
+	Sha256 string
+}
+
 // WSL2发行包下载函数
-func WSL2_Downloader(ctx context.Context, Info WSLinfo) error { return nil }
+func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
+	return nil
+}
 
 // 移动发行版函数
 func MovingPathWSL(ctx context.Context, Info WSLinfo) {}

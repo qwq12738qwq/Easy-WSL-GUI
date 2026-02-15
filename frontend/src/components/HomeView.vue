@@ -1,9 +1,16 @@
 <script setup>
 import { ref, onMounted, onUnmounted, onActivated, onDeactivated, reactive, computed } from 'vue'
-import { GetDistroStats, GetPath, GetMetrics, UninstallDistro, StartMigration, SelectDirectory, OpenDistroFolder, StartDistro } from '../../wailsjs/go/main/App'
+import { GetDistroStats, GetPath, GetMetrics, UninstallDistro, StartMigration, SelectDirectory, OpenDistroFolder, StartDistro, StopDistro } from '../../wailsjs/go/main/App'
 import { formatBytes } from '../utils/format'
-import { ArrowRightLeft, Play, FolderOpen } from 'lucide-vue-next'
-import { EventsOn, EventsOff, BrowserOpenURL } from '../../wailsjs/runtime/runtime'
+import { ArrowRightLeft, Play, FolderOpen, Square } from 'lucide-vue-next'
+import { EventsOn, EventsOff, BrowserOpenURL, EventsEmit } from '../../wailsjs/runtime/runtime'
+import { useAppStore } from '../stores/app'
+import { getDistroIcon } from '../utils/icon'
+
+const appStore = useAppStore()
+const handleCardClick = (name) => {
+    appStore.navigateToConfig(name)
+}
 
 // 启动实例
 const startingDistros = ref(new Set())
@@ -25,6 +32,20 @@ const startDistro = async (name) => {
         console.error(`启动 ${name} 失败:`, e)
         alert(`启动失败: ${e}`)
         startingDistros.value.delete(name)
+    }
+}
+
+// 停止实例
+const stopDistro = async (name) => {
+    try {
+        console.log(`尝试停止 ${name}...`)
+        await StopDistro(name)
+        setTimeout(() => {
+            syncData()
+        }, 1500)
+    } catch (e) {
+        console.error(`停止 ${name} 失败:`, e)
+        alert(`停止失败: ${e}`)
     }
 }
 
@@ -88,8 +109,18 @@ const migrationSteps = ref([
     { title: '导出系统', status: 'pending', keyword: ['exporting', '导出'] },
     { title: '卸载系统', status: 'pending', keyword: ['uninstall', '卸载'] },
     { title: '迁移系统', status: 'pending', keyword: ['moving', 'transferring', '迁移'] },
+    { title: '选择默认用户', status: 'pending', keyword: ['select-user', '用户选择'] },
     { title: '还原用户', status: 'pending', keyword: ['还原'] }
 ])
+
+const distroUsers = ref([])
+const selectedUser = ref('')
+
+const handleUserSelect = () => {
+    if (!selectedUser.value) return
+    EventsEmit("migration:select-user", selectedUser.value)
+    migrationStepView.value = 'progress'
+}
 
 // 处理迁移日志与进度 (仿照 InstallView)
 const processMigrationLog = (line) => {
@@ -97,12 +128,50 @@ const processMigrationLog = (line) => {
     const lowerLine = line.toLowerCase()
     migrationLog.value = line
 
-    // 进度条模拟增长
-    const skipIncrementKeywords = ['%', 'progress', '进度']
+    const skipIncrementKeywords = ['%', 'progress', '进度', 'downloading', 'exporting', 'importing']
     const shouldSkip = skipIncrementKeywords.some(key => lowerLine.includes(key))
 
-    if (!shouldSkip && migrationProgress.value < 95) {
-        migrationProgress.value += 0.5 // 迁移通常较慢，增长慢一点
+    // 尝试解析进度百分比 (假设日志格式如 "Progress: 25.5%" 或 "25%")
+    const percentMatch = lowerLine.match(/(\d+(\.\d+)?)%/)
+    if (percentMatch) {
+        const p = parseFloat(percentMatch[1])
+        if (!isNaN(p)) {
+             // 限制最大增长，确保不超过当前步骤的最大范围
+             const stepCount = migrationSteps.value.length
+             const stepWidth = 100 / stepCount
+             // 找到当前正在进行的步骤索引
+             const activeStepIndex = migrationSteps.value.findIndex(s => s.status === 'processing')
+             const currentIndex = activeStepIndex !== -1 ? activeStepIndex : 0
+             
+             const currentStepMax = (currentIndex + 1) * stepWidth
+             
+             // 将后端 0-100% 映射到当前步骤的范围
+             const mappedPercent = (currentIndex * stepWidth) + (p / 100 * stepWidth)
+
+             if (mappedPercent > migrationProgress.value && mappedPercent <= currentStepMax) {
+                 migrationProgress.value = mappedPercent
+             }
+        }
+    } else {
+        // 如果没有明确百分比，尝试通过关键词推断
+        if (lowerLine.includes('25%')) migrationProgress.value = Math.max(migrationProgress.value, 25)
+        else if (lowerLine.includes('50%')) migrationProgress.value = Math.max(migrationProgress.value, 50)
+        else if (lowerLine.includes('75%')) migrationProgress.value = Math.max(migrationProgress.value, 75)
+        else if (lowerLine.includes('100%')) migrationProgress.value = 100
+    }
+
+    // 模拟增长逻辑
+    if (!percentMatch && !shouldSkip) {
+        const stepCount = migrationSteps.value.length
+        const stepWidth = 100 / stepCount
+        const activeStepIndex = migrationSteps.value.findIndex(s => s.status === 'processing')
+        const currentIndex = activeStepIndex !== -1 ? activeStepIndex : 0
+        const currentStepMax = (currentIndex + 1) * stepWidth
+        const simulationLimit = currentStepMax - (stepWidth * 0.1)
+        
+        if (migrationProgress.value < simulationLimit) {
+            migrationProgress.value += 0.2 // 迁移通常较慢，增长慢一点
+        }
     }
 
     // 步骤匹配
@@ -128,6 +197,12 @@ const processMigrationLog = (line) => {
             }
         }
     })
+    
+    // 特殊处理：如果检测到“完成”或“Success”
+    if (lowerLine.includes('success') || lowerLine.includes('completed') || lowerLine.includes('迁移成功')) {
+        migrationProgress.value = 100
+        migrationSteps.value.forEach(s => s.status = 'finished')
+    }
 }
 
 // 打开迁移弹窗
@@ -189,9 +264,30 @@ const startMigration = async () => {
         const msg = (typeof data === 'object' && data.message) ? data.message : data
         processMigrationLog(msg)
     })
+
+    // 监听用户列表 (兼容 migration:users 和 migration:user-groups)
+    const handleUserList = (users) => {
+        distroUsers.value = users || []
+        if (distroUsers.value.length > 0) {
+            selectedUser.value = distroUsers.value[0] // 默认选中第一个
+        }
+        migrationStepView.value = 'select-user'
+        // 标记 "选择默认用户" 步骤为进行中
+        const stepIndex = migrationSteps.value.findIndex(s => s.keyword.includes('select-user'))
+        if (stepIndex !== -1) {
+            // 完成之前的
+            for(let i=0; i<stepIndex; i++) migrationSteps.value[i].status = 'finished'
+            migrationSteps.value[stepIndex].status = 'processing'
+        }
+    }
+
+    EventsOn("migration:users", handleUserList)
+    EventsOn("migration:user-groups", handleUserList)
     
     EventsOn("migration:done", async (data) => {
         EventsOff("migration:progress")
+        EventsOff("migration:users")
+        EventsOff("migration:user-groups")
         EventsOff("migration:done")
         
         if (data.status === 'failed') {
@@ -384,6 +480,22 @@ const stopPolling = () => {
     }
 }
 
+const refreshAllPaths = async () => {
+    // 仅在列表不为空时执行刷新
+    if (distros.value.length === 0) return
+    
+    for (const item of distros.value) {
+        try {
+            const p = await GetPath(item.name)
+            if (p && p.trim() !== '') {
+                item.path = p
+            }
+        } catch(e) {
+            console.warn('Failed to refresh path for', item.name)
+        }
+    }
+}
+
 onMounted(() => {
   // Initial load is handled by onActivated if using KeepAlive, 
   // but keeping syncData here ensures immediate fetch on mount if needed before activation logic kicks in.
@@ -391,7 +503,9 @@ onMounted(() => {
   // We can just rely on onActivated.
 })
 
-onActivated(() => {
+onActivated(async () => {
+    // 激活时先尝试刷新所有路径，以同步 ConfigView 可能发生的迁移变更
+    await refreshAllPaths()
     startPolling()
 })
 
@@ -467,24 +581,6 @@ const confirmUninstall = async () => {
   }
 }
 
-const getDistroIcon = (name) => {
-  const n = name.toLowerCase()
-  let iconName = 'UbuntuCoF.png' // 默认值
-
-  if (n.includes('ubuntu')) iconName = 'UbuntuCoF.png'
-  else if (n.includes('debian')) iconName = 'Debian.png'
-  else if (n.includes('kali'))   iconName = 'Kali-drago.png'
-  else if (n.includes('arch'))   iconName = 'Arch.png'
-  else if (n.includes('fedora'))   iconName = 'Fedora.png'
-  else if (n.includes('almalinux'))   iconName = 'AlmaLinux.png'
-  else if (n.includes('opensuse'))   iconName = 'openSUSE.png'
-  else if (n.includes('docker'))   iconName = 'Docker.png'
-
-  // 关键：利用 Vite 的动态资源解析
-  // 假设你的图片放在：frontend/src/assets/icons/ 目录下
-  return new URL(`../assets/icons/${iconName}`, import.meta.url).href
-}
-
 // 辅助函数：计算内存百分比
 const getMemPercent = (used, total) => {
     const u = parseFloat(used) || 0
@@ -501,10 +597,6 @@ const getMemPercent = (used, total) => {
           <h2>我的发行版</h2>
           <span class="distro-count" v-if="!isInitialLoading">{{ distros.length }} 个实例</span>
       </div>
-      <div class="status-tag">
-        <span class="status-dot-pulse"></span> 
-        <span class="status-text">系统监控运行中</span>
-      </div>
     </header>
 
     <div v-if="isInitialLoading" class="loading-grid">
@@ -519,15 +611,18 @@ const getMemPercent = (used, total) => {
 
     <div v-else class="distro-grid">
       <TransitionGroup name="list">
-      <div v-for="item in sortedDistros" :key="item.name" class="distro-card" :class="{ 'running': item.status === 'Running' }">
+      <div v-for="item in sortedDistros" :key="item.name" class="distro-card" :class="{ 'running': item.status === 'Running' }" @click="handleCardClick(item.name)">
         <div class="card-actions">
-            <button class="action-btn folder-action" @click="openDistroFolder(item.name)" title="打开安装目录">
+            <button v-if="item.status === 'Running'" class="action-btn stop-action" @click.stop="stopDistro(item.name)" title="停止实例">
+                <Square :size="16" fill="currentColor" />
+            </button>
+            <button class="action-btn folder-action" @click.stop="openDistroFolder(item.name)" title="打开安装目录">
                 <FolderOpen :size="16" />
             </button>
-            <button class="action-btn migrate-action" @click="openMigrationModal(item)" title="系统迁移">
+            <button class="action-btn migrate-action" @click.stop="openMigrationModal(item)" title="系统迁移">
                 <ArrowRightLeft :size="16" />
             </button>
-            <button class="action-btn uninstall-action" @click="handleUninstallClick(item.name)" title="卸载实例">
+            <button class="action-btn uninstall-action" @click.stop="handleUninstallClick(item.name)" title="卸载实例">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
             </button>
         </div>
@@ -579,7 +674,7 @@ const getMemPercent = (used, total) => {
         <div class="offline-placeholder" v-else>
           <div class="offline-icon">💤</div>
           <span>实例已休眠</span>
-          <button class="start-btn" @click="startDistro(item.name)" :disabled="startingDistros.has(item.name)" :class="{ 'is-loading': startingDistros.has(item.name) }">
+          <button class="start-btn" @click.stop="startDistro(item.name)" :disabled="startingDistros.has(item.name)" :class="{ 'is-loading': startingDistros.has(item.name) }">
               <span v-if="startingDistros.has(item.name)" class="spinner-sm start-spinner"></span>
               <Play v-else :size="14" class="start-icon" /> 
               {{ startingDistros.has(item.name) ? '正在启动...' : '启动实例' }}
@@ -670,6 +765,35 @@ const getMemPercent = (used, total) => {
             </div>
         </div>
 
+        <div class="modal-body" v-else-if="migrationStepView === 'select-user'">
+            <div class="user-select-container">
+                <div class="icon-header">
+                    <span class="header-icon">👤</span>
+                    <h3>选择默认用户</h3>
+                    <p>检测到系统默认用户配置丢失，请从下方列表中选择一个用户作为默认登录用户。</p>
+                </div>
+
+                <div class="user-list">
+                     <div 
+                        v-for="user in distroUsers" 
+                        :key="user" 
+                        class="user-option"
+                        :class="{ selected: selectedUser === user }"
+                        @click="selectedUser = user"
+                     >
+                        <div class="radio-indicator"></div>
+                        <span class="username">{{ user }}</span>
+                     </div>
+                </div>
+
+                <div class="action-bar centered">
+                    <button class="btn btn-primary" @click="handleUserSelect" :disabled="!selectedUser">
+                        确认选择
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div class="modal-body" v-else>
             <!-- 进度视图 -->
              <div class="progress-content" v-if="!migrationError">
@@ -722,6 +846,97 @@ const getMemPercent = (used, total) => {
 </template>
 
 <style scoped>
+/* --- 用户选择样式 --- */
+.user-select-container {
+    text-align: center;
+    padding: 10px 0;
+}
+
+.icon-header {
+    margin-bottom: 24px;
+}
+
+.header-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 16px;
+}
+
+.icon-header h3 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    color: var(--color-text-primary);
+}
+
+.icon-header p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+}
+
+.user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 24px;
+    text-align: left;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+.user-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--color-bg-secondary);
+}
+
+.user-option:hover {
+    background: var(--color-bg-hover);
+}
+
+.user-option.selected {
+    background: rgba(var(--color-brand-rgb), 0.1);
+    border: 1px solid var(--color-brand);
+}
+
+.radio-indicator {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--color-text-secondary);
+    border-radius: 50%;
+    position: relative;
+}
+
+.user-option.selected .radio-indicator {
+    border-color: var(--color-brand);
+}
+
+.user-option.selected .radio-indicator::after {
+    content: "";
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 8px; height: 8px;
+    background: var(--color-brand);
+    border-radius: 50%;
+}
+
+.username {
+    font-weight: 500;
+    color: var(--color-text-primary);
+}
+
+.action-bar.centered {
+    justify-content: center;
+}
+
 /* --- 布局容器 --- */
 .home-view-container { 
   display: flex; 
@@ -1172,6 +1387,7 @@ const getMemPercent = (used, total) => {
     cursor: pointer; transition: all 0.2s;
 }
 .action-btn:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.stop-action:hover { background: rgba(255, 77, 79, 0.1); color: var(--color-error); }
 .folder-action:hover { background: rgba(24, 144, 255, 0.1); color: var(--color-brand); }
 .uninstall-action:hover { background: rgba(255, 77, 79, 0.1); color: var(--color-error); }
 .migrate-action:hover { background: var(--color-bg-active); color: var(--color-brand); }

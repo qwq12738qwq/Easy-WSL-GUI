@@ -11,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -38,13 +40,26 @@ func ShowNativeMessageBox(title, text string) {
 	)
 }
 
+// 检测管理员
+func CheckAdmin() error {
+	cmd := exec.Command("net", "session")
+	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // 详细检测wsl
 func DetectWSL() error {
 	_, err := exec.LookPath("wsl.exe")
 	if err != nil {
 		return fmt.Errorf("wsl.exe not found")
 	}
-	if err := exec.Command("wsl.exe", "--status").Run(); err != nil {
+	cmd := exec.Command("wsl.exe", "--status")
+	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("wsl exists but not enabled")
 	}
 	return nil

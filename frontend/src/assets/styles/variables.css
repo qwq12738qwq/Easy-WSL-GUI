@@ -22,6 +22,8 @@
   --color-bg-card: #ffffff;
   --color-bg-modal: #ffffff;
   --color-bg-hover: #f0f0f0;
+  --color-bg-secondary: #f9f9f9;
+  --color-bg-tertiary: #f0f0f0;
   
   --color-text-primary: #1f1f1f;
   --color-text-secondary: #8c8c8c;
@@ -66,7 +68,15 @@
   --transition-fast: 0.15s ease;
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* --- Mappings for Component Compatibility --- */
+  --primary-color: var(--color-brand);
+  --primary-rgb: 24, 144, 255; /* RGB value of #1890ff */
+  --bg-color: var(--color-bg-body);
+  --card-bg: var(--color-bg-card);
+  --text-color: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --border-color: var(--color-border);
+  --hover-bg: var(--color-bg-hover);
 }
 
 /* --- Dark Mode Overrides --- */
@@ -75,8 +85,10 @@
   --color-bg-body: #121212;
   --color-bg-sidebar: #1e1e1e;
   --color-bg-card: #252526;
-  --color-bg-modal: #1e1e1e;
+  --color-bg-modal: #252526;
   --color-bg-hover: #2d2d2d;
+  --color-bg-secondary: #2d2d2d;
+  --color-bg-tertiary: #333333;
   
   --color-text-primary: #eeeeee;
   --color-text-secondary: #bbbbbb;
@@ -84,6 +96,14 @@
   
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-hover: rgba(255, 255, 255, 0.15);
+  
+  /* Mappings for Dark Mode */
+  --bg-color: var(--color-bg-body);
+  --card-bg: var(--color-bg-card);
+  --text-color: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --border-color: var(--color-border);
+  --hover-bg: var(--color-bg-hover);
   
   /* Shadows (Dark mode needs stronger/different shadows or none) */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);

@@ -25,12 +25,12 @@ export const usePerformanceStore = defineStore('performance', {
     nestedVirtualization: true,
     vmIdleTimeout: 60000,
     dnsProxy: true,
-    defaultVhdSize: 1024, // GB
     pageReporting: true,
     bestEffortDnsParsing: false,
     dnsTunnelingIpAddress: '10.255.255.254',
     initialAutoProxyTimeout: 1000,
-    ignoredPorts: ''
+    ignoredPorts: '',
+    useWindowsDnsCli: false
   }),
   actions: {
     setPerformanceConfig(config) {
@@ -61,12 +61,12 @@ export const usePerformanceStore = defineStore('performance', {
         nestedVirtualization: true,
         vmIdleTimeout: 60000,
         dnsProxy: true,
-        defaultVhdSize: 1024,
         pageReporting: true,
         bestEffortDnsParsing: false,
         dnsTunnelingIpAddress: '10.255.255.254',
         initialAutoProxyTimeout: 1000,
-        ignoredPorts: ''
+        ignoredPorts: '',
+        useWindowsDnsCli: false
       }
     }
   }

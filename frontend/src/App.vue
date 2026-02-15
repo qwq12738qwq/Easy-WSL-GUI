@@ -5,24 +5,28 @@ import InstallView from './components/InstallView.vue'
 import SettingView from './components/SettingView.vue'
 import StartupChecks from './components/StartupChecks.vue'
 import PerformanceConfig from './components/PerformanceConfig.vue'
+import ConfigView from './components/ConfigView.vue'
+import EnvironmentView from './components/EnvironmentView.vue'
 import { initTheme } from './utils/theme'
 import { EventsOn, BrowserOpenURL } from './wailsjs/runtime/runtime'
-import { Home, Download, Settings, Tag, X, Info, Cpu } from 'lucide-vue-next'
+import { Home, Download, Settings, Tag, X, Info, Cpu, Sliders, LayoutGrid } from 'lucide-vue-next'
+import { useAppStore } from './stores/app'
 
 // 初始化主题 (修复 1.1 - 1.3)
 initTheme()
 
+const appStore = useAppStore()
+
 // 启动检查状态
 const checksComplete = ref(false)
-
-// 当前选中的标签
-const currentTab = ref('install')
 
 // 建立 ID 到 组件的映射
 const views = {
   home: HomeView,
   install: InstallView,
   performance: PerformanceConfig, // 注册为独立视图
+  config: ConfigView,
+  environment: EnvironmentView,
   setting: SettingView
 }
 
@@ -109,15 +113,15 @@ onMounted(() => {
       
       <nav class="menu">
         <div 
-          :class="['menu-item', { active: currentTab === 'home' }]" 
-          @click="currentTab = 'home'"
+          :class="['menu-item', { active: appStore.currentTab === 'home' }]" 
+          @click="appStore.setCurrentTab('home')"
         >
           <Home class="menu-icon" :size="20" />
           <span class="menu-text">首页</span>
         </div>
         <div 
-          :class="['menu-item', { active: currentTab === 'install' }]" 
-          @click="currentTab = 'install'"
+          :class="['menu-item', { active: appStore.currentTab === 'install' }]" 
+          @click="appStore.setCurrentTab('install')"
         >
           <Download class="menu-icon" :size="20" />
           <span class="menu-text">安装</span>
@@ -125,16 +129,34 @@ onMounted(() => {
         
         <!-- Performance Config Entry -->
         <div 
-          :class="['menu-item', { active: currentTab === 'performance' }]" 
-          @click="currentTab = 'performance'"
+          :class="['menu-item', { active: appStore.currentTab === 'performance' }]" 
+          @click="appStore.setCurrentTab('performance')"
         >
           <Cpu class="menu-icon" :size="20" />
           <span class="menu-text">性能配置</span>
         </div>
 
+        <!-- Distro Config Entry -->
         <div 
-          :class="['menu-item', { active: currentTab === 'setting' }]" 
-          @click="currentTab = 'setting'"
+          :class="['menu-item', { active: appStore.currentTab === 'config' }]" 
+          @click="appStore.selectDistro(''); appStore.setCurrentTab('config')"
+        >
+          <Sliders class="menu-icon" :size="20" />
+          <span class="menu-text">发行版配置</span>
+        </div>
+
+        <!-- Environment Market Entry -->
+        <div 
+          :class="['menu-item', { active: appStore.currentTab === 'environment' }]" 
+          @click="appStore.setCurrentTab('environment')"
+        >
+          <LayoutGrid class="menu-icon" :size="20" />
+          <span class="menu-text">环境市场</span>
+        </div>
+
+        <div 
+          :class="['menu-item', { active: appStore.currentTab === 'setting' }]" 
+          @click="appStore.setCurrentTab('setting')"
         >
           <Settings class="menu-icon" :size="20" />
           <span class="menu-text">设置</span>
@@ -155,7 +177,7 @@ onMounted(() => {
       <section class="content-area">
         <Transition name="page" mode="out-in">
           <KeepAlive>
-            <component :is="views[currentTab]" :key="currentTab" />
+            <component :is="views[appStore.currentTab]" :key="appStore.currentTab" />
           </KeepAlive>
         </Transition>
       </section>
@@ -217,7 +239,7 @@ body {
 
 /* --- 侧边栏优化 --- */
 .sidebar {
-  width: 240px;
+  width: 250px;
   background: var(--color-bg-sidebar);
   color: var(--color-text-primary);
   display: flex;
@@ -226,6 +248,7 @@ body {
   border-right: 1px solid var(--color-border);
   transition: all var(--transition-normal);
   flex-shrink: 0;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.02);
 }
 
 .brand {
@@ -233,26 +256,29 @@ body {
   display: flex;
   align-items: center;
   padding: 0 24px;
-  border-bottom: 1px solid transparent; /* Placeholder for divider if needed */
+  /* border-bottom: 1px solid var(--color-border); */
 }
 
 .brand-text {
-  font-size: 1.2rem;
+  font-size: 1.25rem;
   font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--color-text-primary);
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--color-brand), var(--color-brand-active));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .menu { 
-  padding: 16px; 
+  padding: 24px 16px; 
   flex: 1; /* Pushes version info to bottom */
   display: flex;
   flex-direction: column;
-  gap: 8px; /* Spacing between items */
+  gap: 6px; /* Spacing between items */
 }
 
 .menu-item {
-  height: 48px; /* >= 44px clickable area */
+  height: 46px; /* >= 44px clickable area */
   padding: 0 16px;
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -262,26 +288,45 @@ body {
   display: flex;
   align-items: center;
   gap: 12px; /* Icon and text spacing */
+  position: relative;
+  overflow: hidden;
 }
 
 .menu-item:hover {
   background-color: var(--color-bg-hover);
   color: var(--color-text-primary);
+  transform: translateX(4px);
 }
 
 .menu-item.active {
+  background-color: rgba(24, 144, 255, 0.1); /* Light brand color */
+  color: var(--color-brand);
+  font-weight: 600;
+}
+
+.menu-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 20px;
+  width: 4px;
   background-color: var(--color-brand);
-  color: #fff;
-  font-weight: 500;
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+  border-radius: 0 4px 4px 0;
 }
 
 .menu-icon {
-  opacity: 0.8;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast);
 }
 
 .menu-item.active .menu-icon {
   opacity: 1;
+}
+
+.menu-item:hover .menu-icon {
+  opacity: 0.9;
 }
 
 /* --- Version Info Area --- */

@@ -2,37 +2,44 @@
 import { EventsOn, EventsOff } from 'wailsjs/runtime/runtime'
 import { ref, onMounted, onUnmounted, reactive, computed } from 'vue'
 import InfoCard from './LinuxCard.vue'
-import { Install_Bottom, SelectDirectory } from 'wailsjs/go/main/App' 
+import { Install_Bottom, SelectDirectory, GetDistroList } from 'wailsjs/go/main/App' 
 
-const instances = ref([
-  { id: 1, name: 'Ubuntu', desc: '常用开发环境', state: 'online', img_name:'UbuntuCoF', 
-    versions: [
-      { label: 'Ubuntu-26.04', value: 'Ubuntu-26.04' },
-      { label: 'Ubuntu-25.10', value: 'Ubuntu-25.10' },
-      { label: 'Ubuntu-25.04', value: 'Ubuntu-25.04' },
-      { label: 'Ubuntu-24.04', value: 'Ubuntu-24.04' },
-    ]},
-  { id: 2, name: 'Debian', desc: '测试服务器', state: 'offline', img_name:'Debian', versions: [{ label: 'Latest', value: 'Debian' }] },
-  { id: 3, name: 'Kali-Linux', desc: '网络安全工具库', state: 'online', img_name:'Kali-drago', versions: [{ label: 'Latest', value: 'Kali' }] },
-  { id: 4, name: 'Arch', desc: '自定义配置', state: 'online', img_name:'Arch', versions: [{ label: 'Latest', value: 'Arch' }] },
-  { id: 5, name: 'Fedora', desc: '实验性特性', state: 'offline', img_name:'Fedora', versions: [{ label: 'Latest', value: 'Fedora' }] },
-  { id: 6, name: 'AlmaLinux', desc: '实验性特性', state: 'offline', img_name:'AlmaLinux', 
-    versions: [
-    { label: 'AlmaLinux-10', value: 'AlmaLinux-10' },
-    { label: 'AlmaLinux-Kitten-10', value: 'AlmaLinux-Kitten-10' },
-    { label: 'AlmaLinux-9', value: 'AlmaLinux-9' },
-    { label: 'AlmaLinux-8', value: 'AlmaLinux-8' },
-  ]},
-    { id: 7, name: 'openSUSE', desc: '实验性特性', state: 'offline', img_name:'openSUSE', versions: [
-      { label: 'openSUSE-Leap-16.0', value: 'openSUSE-Leap-16.0' },
-      { label: 'openSUSE-Tumbleweed', value: 'openSUSE-Tumbleweed' }
-    ] },
-  { id: 8, name: 'SUSE', desc: '实验性特性', state: 'offline', img_name:'SUSE', versions: [
-    { label: 'SUSE-Linux-Enterprise-16.0', value: 'SUSE-Linux-Enterprise-16.0' },
-    { label: 'SUSE-Linux-Enterprise-15-SP7', value: 'SUSE-Linux-Enterprise-15-SP7' },
-  ] },
+const instances = ref([])
+const loadingDistros = ref(false)
+const fetchError = ref('')
 
-])
+const fetchDistros = async () => {
+    loadingDistros.value = true
+    fetchError.value = ''
+    try {
+        // 调用后端接口获取发行版列表
+        // 注意：后端可能返回 JSON 字符串或直接返回对象
+        const result = await GetDistroList()
+        
+        let data = result
+        // 如果后端返回的是 JSON 字符串，尝试解析
+        if (typeof result === 'string') {
+            try {
+                data = JSON.parse(result)
+            } catch (parseErr) {
+                throw new Error("解析后端数据失败: " + parseErr.message)
+            }
+        }
+
+        if (data && Array.isArray(data)) {
+            instances.value = data
+        } else {
+            throw new Error("后端返回数据格式不正确 (期望数组)")
+        }
+    } catch (e) {
+        console.error("获取发行版列表失败:", e)
+        // 优化错误显示：如果是字符串直接显示，如果是对象尝试取 message
+        const errMsg = typeof e === 'string' ? e : (e.message || "未知错误")
+        fetchError.value = errMsg
+    } finally {
+        loadingDistros.value = false
+    }
+}
 
 const showModal = ref(false)
 // 当前操作的步骤 'config' (配置) | 'install' (安装进度)
@@ -99,6 +106,9 @@ const validateForm = () => {
     } else if (installForm.password.includes(' ')) {
         errors.password = '密码不能包含空格' 
         isValid = false
+    } else if (installForm.password.includes("'")) {
+        errors.password = "密码不能包含单引号(')"
+        isValid = false
     }
 
     return isValid
@@ -112,17 +122,51 @@ const handleOverlayMouseDown = (e) => {
     }
 }
 
+const unregisterEvents = () => {
+    try {
+        EventsOff("wsl-output")
+        EventsOff("wsl-error")
+    } catch (e) {
+        console.error("Failed to cleanup events:", e)
+    }
+}
+
+const registerEvents = () => {
+    unregisterEvents() // Ensure clean slate
+    
+    EventsOn("wsl-output", (line) => {
+        if(isError.value) return 
+        processLogAndProgress(line)
+    })
+
+    EventsOn("wsl-error", (errMsg) => {
+        isError.value = true
+        errorDetail.value = errMsg
+        
+        if (installSteps.value[currentStepIndex.value]) {
+            installSteps.value[currentStepIndex.value].status = 'error'
+        }
+        currentLogText.value = "任务异常终止"
+    })
+}
+
+const closeModal = () => {
+    showModal.value = false
+    unregisterEvents()
+}
+
 const handleOverlayMouseUp = (e) => {
     if (isMouseDownOnOverlay && e.target.classList.contains('modal-overlay')) {
         // 安装中禁止点击背景关闭
         if (currentStepView.value !== 'install') {
-            showModal.value = false
+            closeModal()
         }
     }
     isMouseDownOnOverlay = false 
 }
 
 const handleAction = (item) => {
+  unregisterEvents() // Safety cleanup
   currentInstance.value = item
   installForm.username = ''
   installForm.password = ''
@@ -166,8 +210,26 @@ const startInstall = async () => {
 
   currentStepView.value = 'install'
   
+  // 注册事件监听器 (修复: 每次安装时重新注册，避免第二次安装无响应)
+  registerEvents()
+  
   try {
-    await Install_Bottom(currentInstance.value.name, installForm.username, installForm.password, installForm.version, installForm.installPath)
+    // 查找选中的版本详细信息 (获取 url 和 sha256)
+    const selectedVersionInfo = currentInstance.value.versions.find(v => v.value === installForm.version)
+    const downloadUrl = selectedVersionInfo ? selectedVersionInfo.url : ''
+    const sha256 = selectedVersionInfo ? selectedVersionInfo.sha256 : ''
+    
+    // 调用后端安装函数，传入额外参数 (URL, SHA256)
+    await Install_Bottom(
+        currentInstance.value.name, 
+        installForm.username, 
+        installForm.password, 
+        installForm.version, 
+        installForm.installPath,
+        installForm.threadCount,
+        downloadUrl, 
+        sha256       
+    )
   } catch (e) {
     // If immediate call fails
     currentLogText.value = "启动安装失败: " + e
@@ -283,36 +345,15 @@ const processLogAndProgress = (line) => {
 }
 
 onMounted(() => {
-  // 监听正常日志（保持不变）
-  EventsOn("wsl-output", (line) => {
-    if(!showModal.value || isError.value) return 
-    processLogAndProgress(line)
-  })
+  // 清理可能存在的旧监听器
+  unregisterEvents()
 
-  // === 新增：监听错误事件 ===
-  EventsOn("wsl-error", (errMsg) => {
-    // 1. 标记为错误状态
-    isError.value = true
-    errorDetail.value = errMsg
-    
-    // 2. 将当前正在进行的步骤标红
-    if (installSteps.value[currentStepIndex.value]) {
-        installSteps.value[currentStepIndex.value].status = 'error'
-    }
-    
-    // 3. 停止进度条增长（可选，视觉上停止）
-    currentLogText.value = "任务异常终止"
-  })
+  // 启动时加载发行版列表
+  fetchDistros()
 })
 
 onUnmounted(() => {
-  try {
-    if (typeof EventsOff === 'function') {
-      EventsOff("wsl-output")
-    }
-  } catch (e) {
-    console.error("清理事件失败", e)
-  }
+  unregisterEvents()
 })
 
 const getIconUrl = (name) => {
@@ -331,7 +372,21 @@ const getIconUrl = (name) => {
 <template>
   <div class="install-view-container">
     <div class="card-grid">
-      <TransitionGroup name="list">
+      <!-- Loading State -->
+      <div v-if="loadingDistros" class="loading-state">
+          <div class="spinner large-spinner"></div>
+          <p>正在加载发行版列表...</p>
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="fetchError" class="fetch-error-state">
+          <span class="error-symbol">⚠️</span>
+          <p>{{ fetchError }}</p>
+          <button class="btn btn-primary" @click="fetchDistros">重试</button>
+      </div>
+
+      <!-- Data List -->
+      <TransitionGroup name="list" v-else>
         <InfoCard 
           v-for="item in instances" 
           :key="item.id"
@@ -353,7 +408,7 @@ const getIconUrl = (name) => {
               {{ currentStepView === 'config' ? '安装配置向导' : '系统部署中' }} 
               - {{ currentInstance && currentInstance.name }}
               </span>
-              <button v-if="currentStepView === 'config'" class="btn-ghost close-btn" @click="showModal = false">✕</button>
+              <button v-if="currentStepView === 'config'" class="btn-ghost close-btn" @click="closeModal">✕</button>
           </div>
           
           <Transition name="fade-slide" mode="out-in">
@@ -427,7 +482,7 @@ const getIconUrl = (name) => {
                   </div>
 
                   <div class="action-bar">
-                      <button class="btn btn-secondary" @click="showModal = false">取消</button>
+                      <button class="btn btn-secondary" @click="closeModal">取消</button>
                       <button class="btn btn-primary" @click="startInstall">开始安装</button>
                   </div>
               </div>
@@ -467,7 +522,7 @@ const getIconUrl = (name) => {
                   </div>
                   
                   <div class="action-bar" v-if="progressPercent >= 100">
-                      <button class="btn btn-primary" @click="showModal = false">完成</button>
+                      <button class="btn btn-primary" @click="closeModal">完成</button>
                   </div>
               </div>
 
@@ -483,8 +538,8 @@ const getIconUrl = (name) => {
                   </div>
 
                   <div class="action-bar">
-                      <button class="btn btn-danger" @click="() => { currentStepView = 'config'; isError = false; }">返回设置</button>
-                      <button class="btn btn-secondary" @click="showModal = false">关闭</button>
+                      <button class="btn btn-danger" @click="() => { currentStepView = 'config'; isError = false; unregisterEvents(); }">返回设置</button>
+                      <button class="btn btn-secondary" @click="closeModal">关闭</button>
                   </div>
               </div>
 
@@ -641,6 +696,11 @@ const getIconUrl = (name) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Font Rendering Optimization */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transform: translateZ(0); /* Prevent blur from parent transforms */
 }
 
 .progress-bar-container {
@@ -794,6 +854,9 @@ const getIconUrl = (name) => {
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   word-break: break-all;
+  /* Font Rendering Optimization */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Transitions */
@@ -900,5 +963,29 @@ const getIconUrl = (name) => {
     background: var(--color-text-secondary);
     border-radius: 50%;
     opacity: 0.4;
+}
+
+/* Loading & Error States */
+.loading-state, .fetch-error-state {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    color: var(--color-text-secondary);
+}
+
+.large-spinner {
+    width: 40px;
+    height: 40px;
+    border-width: 3px;
+    margin-bottom: var(--spacing-md);
+    color: var(--color-brand);
+}
+
+.fetch-error-state .error-symbol {
+    font-size: 32px;
+    margin-bottom: var(--spacing-sm);
 }
 </style>

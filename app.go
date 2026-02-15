@@ -1,31 +1,33 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	run "runtime"
-	"strings"
 	"time"
 
+	networkGUI "Golang-WSL-GUI/src/Network"
 	setting "Golang-WSL-GUI/src/Setting"
 	start "Golang-WSL-GUI/src/Start"
 	"Golang-WSL-GUI/src/installWSL"
 	runtimeGUI "Golang-WSL-GUI/src/runtimeGUI"
 
+	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.org/x/text/encoding/unicode"
-	"golang.org/x/text/transform"
 )
 
 type MigrationOptions struct {
 	SourcePath string `json:"sourcePath"`
 	TargetPath string `json:"targetPath"`
 	DistroName string `json:"distroName"`
+}
+
+type SystemSpecs struct {
+	TotalMemoryGB int `json:"totalMemoryGB"`
+	LogicalCores  int `json:"logicalCores"`
 }
 
 type App struct {
@@ -59,7 +61,17 @@ func (a *App) SelectDirectory() string {
 	return path
 }
 
-func (a *App) Install_Bottom(name string, user string, pass string, ver string, path string, threadCount int) string {
+// 安装函数
+func (a *App) Install_Bottom(
+	name string,
+	user string,
+	pass string,
+	ver string,
+	path string,
+	threadCount int,
+	downloadUrl string,
+	sha256 string,
+) string {
 	if path == "" {
 		path = fmt.Sprintf(`C:\Users\%s\AppData\Local\Packages`, os.Getenv("USERNAME"))
 	}
@@ -69,6 +81,7 @@ func (a *App) Install_Bottom(name string, user string, pass string, ver string, 
 		Install_Path:    &installWSL.WSLpath{Path: path},
 		Auth:            &installWSL.WSLAuth{User: user, Password: pass},
 		DownloadThreads: &installWSL.WSLDownload{DownloadThreads: threadCount},
+		DownloadInfo:    &installWSL.Download_WSL{URL: downloadUrl, Sha256: sha256},
 	}
 	if err := installWSL.WSL2_Downloader(a.ctx, Info); err != nil {
 		if err.Error() == "发行版存在,但未配置默认用户" {
@@ -87,6 +100,12 @@ func (a *App) Install_Bottom(name string, user string, pass string, ver string, 
 	if err := installWSL.WSL2_Setting_User(a.ctx, Info); err != nil {
 		return err.Error()
 	}
+
+	runtime.EventsEmit(a.ctx, "wsl-output", fmt.Sprintf("正在重启 %s 发行版", Info.Linux_Version))
+	if a.StopDistro(name) != nil {
+		runtime.EventsEmit(a.ctx, "wsl-output", fmt.Sprintf("重启 %s 发行版出错,请手动重启发行版完成安装", Info.Linux_Version))
+		time.Sleep(5 * time.Second)
+	}
 	runtime.EventsEmit(a.ctx, "wsl-output", "success")
 	return "success"
 }
@@ -100,7 +119,7 @@ func (a *App) GetDistroStats() ([]*runtimeGUI.List, error) {
 	return Info, nil
 }
 
-// GetInstallPath 获取发行版安装路径 (只在前端初次加载时调用)
+// GetInstallPath 获取发行版安装路径
 func (a *App) GetPath(name string) (string, error) {
 	infoptr, err := runtimeGUI.Seach_WSL_Regedit_Info(name)
 	if err != nil {
@@ -113,10 +132,7 @@ func (a *App) GetPath(name string) (string, error) {
 // 获取WSL发行版运行信息
 func (a *App) GetMetrics(name string) runtimeGUI.Metrics {
 	Info := installWSL.WSLinfo{
-		Linux_Version:   name,
-		Install_Path:    nil,
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: name,
 	}
 	ptr, err := runtimeGUI.GetMetrics_Runtime(Info)
 	if err != nil {
@@ -128,48 +144,25 @@ func (a *App) GetMetrics(name string) runtimeGUI.Metrics {
 // UninstallDistro 卸载发行版
 func (a *App) UninstallDistro(name string) error {
 	Info := installWSL.WSLinfo{
-		Linux_Version:   name,
-		Install_Path:    nil,
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: name,
 	}
-	installWSL.Start_cmd(Info, "Shutdown")
+
 	runtime.EventsEmit(a.ctx, "uninstall:progress", fmt.Sprintf("正在停止 %s 发行版", Info.Linux_Version))
-	// 确保完全关闭
-	for {
-		listptr, _ := runtimeGUI.GetWSLallStatus()
-
-		isRunning := false
-		for _, distro := range listptr {
-			if distro.Name == Info.Linux_Version {
-				if distro.Status == "Running" {
-					isRunning = true
-				}
-				break
-			}
-		}
-
-		if !isRunning {
-			break
-		}
-
-		time.Sleep(2 * time.Second)
+	if err := a.StopDistro(name); err != nil {
+		return err
 	}
 	runtime.EventsEmit(a.ctx, "uninstall:progress", fmt.Sprintf("开始卸载 %s 发行版", Info.Linux_Version))
 	if err := installWSL.UninstallWSL(a.ctx, Info); err != nil {
 		return err
 	}
 	runtime.EventsEmit(a.ctx, "uninstall:progress", "success")
-	// 执行 wsl --unregister <name>
 	return nil
 }
 
 // 检查管理员权限
 func (a *App) CheckAdmin() bool {
 	if run.GOOS == "windows" {
-		cmd := exec.Command("net", "session")
-		err := cmd.Run()
-		return err == nil
+		return start.CheckAdmin() == nil
 	}
 	// 非 Windows 系统根据逻辑返回
 	return false
@@ -187,46 +180,55 @@ func (a *App) CheckWSL() bool {
 // 迁移WSL系统函数
 func (a *App) StartMigration(option MigrationOptions) error {
 	Info := installWSL.WSLinfo{
-		Linux_Version:   option.DistroName,
-		Install_Path:    &installWSL.WSLpath{Path: option.TargetPath},
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: option.DistroName,
+		Install_Path:  &installWSL.WSLpath{Path: option.TargetPath},
 	}
-
+	// 先读取默认用户配置
+	// 预防先操作系统出现问题
+	runtime.EventsEmit(a.ctx, "migration:progress", "保存用户配置中......")
+	time.Sleep(2 * time.Second)
+	var user_cache string
 	user, err := runtimeGUI.GetDefaultUser(Info)
 	if err != nil {
-		return errors.New(user)
+		runtime.EventsEmit(a.ctx, "migration:progress", "在wsl.conf中找不到默认用户,将寻找发行版内部用户组")
+		time.Sleep(2 * time.Second)
+		list, err := installWSL.GetWSLUserGroups(option.DistroName)
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "migration:done", map[string]interface{}{
+				"status": "failed",
+				"error":  "发行版中无用户",
+			})
+			return err
+		}
+		runtime.EventsEmit(a.ctx, "migration:users", list[0].Users)
+		runtime.EventsOn(a.ctx, "migration:users", func(optionalData ...interface{}) {
+			if len(optionalData) > 0 {
+				// 将 interface{} 转换为 string
+				username, ok := optionalData[0].(string)
+				if ok {
+					user_cache = username
+				} else {
+					return
+				}
+			}
+		})
+
 	}
+	user_cache = user
 	// 刷新Info
 	Info = installWSL.WSLinfo{
-		Linux_Version:   option.DistroName,
-		Install_Path:    &installWSL.WSLpath{Path: option.TargetPath},
-		Auth:            &installWSL.WSLAuth{User: user, Password: "0"},
-		DownloadThreads: nil,
+		Linux_Version: option.DistroName,
+		Install_Path:  &installWSL.WSLpath{Path: option.TargetPath},
+		Auth:          &installWSL.WSLAuth{User: user_cache, Password: "0"},
+	}
+	time.Sleep(2 * time.Second)
+	runtime.EventsEmit(a.ctx, "migration:progress", "关闭发行版中......")
+
+	if err := a.StopDistro(option.DistroName); err != nil {
+		return err
 	}
 
-	installWSL.Start_cmd(Info, "Stop")
-	// 确保完全关闭
-	for {
-		listptr, _ := runtimeGUI.GetWSLallStatus()
-
-		isRunning := false
-		for _, distro := range listptr {
-			if distro.Name == option.DistroName {
-				if distro.Status == "Running" {
-					isRunning = true
-				}
-				break
-			}
-		}
-
-		if !isRunning {
-			break
-		}
-
-		time.Sleep(2 * time.Second)
-	}
-	runtime.EventsEmit(a.ctx, "migration:progress", "迁移准备工作完成")
+	runtime.EventsEmit(a.ctx, "migration:progress", "准备工作完成")
 	time.Sleep(2 * time.Second)
 	// 异步处理,防止堵塞
 	go installWSL.MovingPathWSL(a.ctx, Info)
@@ -237,10 +239,7 @@ func (a *App) StartMigration(option MigrationOptions) error {
 // 打开发行版内部目录
 func (a *App) OpenDistroFolder(distroName string) error {
 	Info := installWSL.WSLinfo{
-		Linux_Version:   distroName,
-		Install_Path:    nil,
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: distroName,
 	}
 	defaultUser, err := runtimeGUI.GetDefaultUser(Info)
 	if err != nil {
@@ -255,10 +254,7 @@ func (a *App) OpenDistroFolder(distroName string) error {
 // 启动发行版按钮
 func (a *App) StartDistro(name string) {
 	Info := installWSL.WSLinfo{
-		Linux_Version:   name,
-		Install_Path:    nil,
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: name,
 	}
 	installWSL.Start_cmd(Info, "Start")
 }
@@ -269,10 +265,7 @@ func (a *App) SavePerformanceConfig(config setting.PerformanceConfig) error {
 		return err
 	}
 	Info := installWSL.WSLinfo{
-		Linux_Version:   "",
-		Install_Path:    nil,
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: "",
 	}
 	installWSL.Start_cmd(Info, "ShutdownAll")
 	return nil
@@ -286,10 +279,7 @@ func (a *App) GetPerformanceConfig() setting.PerformanceConfig {
 // 获取 WSL 版本
 func (a *App) GetWSLVersion() string {
 	Info := installWSL.WSLinfo{
-		Linux_Version:   "",
-		Install_Path:    nil,
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: "",
 	}
 	return setting.GetOnlyWslVersion(Info)
 }
@@ -297,10 +287,7 @@ func (a *App) GetWSLVersion() string {
 // 显示详细版本信息
 func (a *App) ShowWSLInfo() string {
 	Info := installWSL.WSLinfo{
-		Linux_Version:   "",
-		Install_Path:    nil,
-		Auth:            nil,
-		DownloadThreads: nil,
+		Linux_Version: "",
 	}
 
 	line, err := installWSL.Start_cmd(Info, "Version")
@@ -308,24 +295,43 @@ func (a *App) ShowWSLInfo() string {
 		return err.Error()
 	}
 
-	// 定义 UTF-16LE 解码器
-	decoder := unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder()
-	// 尝试解码
-	decoded, err := io.ReadAll(transform.NewReader(bytes.NewReader(line), decoder))
+	return installWSL.Reduce_Unicode(line)
+}
 
-	var result string
-	if err != nil || len(decoded) < 2 {
-		result = string(line)
-	} else {
-		result = string(decoded)
+// 停止发行版
+func (a *App) StopDistro(name string) error {
+	// 错误重试计数器
+	var i uint8
+
+	Info := installWSL.WSLinfo{
+		Linux_Version: name,
 	}
+	// 确保完全关闭
+	for {
+		i++
 
-	// 去除不可见的 BOM 头、回车符 \r 和多余空格
-	result = strings.ReplaceAll(result, "\uFEFF", "") // 去除 UTF-16 BOM
-	result = strings.ReplaceAll(result, "\r", "")     // 统一换行符
-	result = strings.TrimSpace(result)                // 去除首尾空白
+		listptr, _ := runtimeGUI.GetWSLallStatus()
 
-	return result
+		isRunning := false
+		for _, distro := range listptr {
+			if distro.Name == Info.Linux_Version {
+				if distro.Status == "Running" {
+					isRunning = true
+				}
+				break
+			}
+		}
+
+		if !isRunning {
+			break
+		}
+		installWSL.Start_cmd(Info, "Stop")
+		time.Sleep(3 * time.Second)
+		if i >= 10 {
+			return errors.New("暂停发行版出错,请手动暂停发行版")
+		}
+	}
+	return nil
 }
 
 // CheckAndUpdateWSL 检查并更新 WSL
@@ -338,3 +344,58 @@ func (a *App) CheckAndUpdateWSL() {
 	// Windows 命令: start cmd /k "wsl --update"
 	exec.Command("cmd", "/c", "start", "cmd", "/k", "wsl --update").Start()
 }
+
+// GetAPTSource 获取当前发行版的 APT 软件源
+func (a *App) GetAPTSource(distroName string) string {
+	Info := installWSL.WSLinfo{
+		Linux_Version: "",
+	}
+	version, err := setting.CheckCurrentAptSource(a.ctx, Info)
+	if err != nil {
+		return err.Error()
+	}
+	return version
+}
+
+// 换源函数
+func (a *App) ChangeAPTSource(distroName string, source string) string {
+	Info := installWSL.WSLinfo{
+		Linux_Version: distroName,
+	}
+	result, err := setting.ChangeDistroSource(a.ctx, Info, source)
+	if err != nil {
+		return err.Error()
+	}
+	return result
+}
+
+// 启用 WSL 功能组件
+func (a *App) EnableWSLFeature() {
+	cmdStr := `dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart; dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart; wsl --update; echo "Done. Please Restart Computer."; pause`
+
+	exec.Command("powershell", "start-process", "powershell", "-verb", "runas", "-argumentlist", fmt.Sprintf("'-c \"%s\"'", cmdStr)).Start()
+}
+
+// 获取发行版下载信息Json
+func (a *App) GetDistroList() ([]networkGUI.DistroItem, error) {
+	return networkGUI.GetDistroList()
+}
+
+// 获取最大内存使用 && CPU线程数
+func (a *App) GetSystemSpecs() SystemSpecs {
+	v, err := mem.VirtualMemory()
+	if err != nil {
+		return SystemSpecs{}
+	}
+
+	totalGB := int(v.Total / 1024 / 1024 / 1024)
+	return SystemSpecs{
+
+		TotalMemoryGB: totalGB,
+		LogicalCores:  run.NumCPU(),
+	}
+}
+
+func (a *App) CheckDockerInstalled(distroName string) bool { return false }
+
+func (a *App) SetDockerRegistryMirror(distroName string, mirrorUrl string) error { return nil }
