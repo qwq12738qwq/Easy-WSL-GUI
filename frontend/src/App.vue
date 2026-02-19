@@ -9,7 +9,7 @@ import ConfigView from './components/ConfigView.vue'
 import EnvironmentView from './components/EnvironmentView.vue'
 import { initTheme } from './utils/theme'
 import { EventsOn, BrowserOpenURL } from './wailsjs/runtime/runtime'
-import { Home, Download, Settings, Tag, X, Info, Cpu, Sliders, LayoutGrid } from 'lucide-vue-next'
+import { Home, Download, Settings, Tag, X, Info, Cpu, Sliders, LayoutGrid, Github } from 'lucide-vue-next'
 import { useAppStore } from './stores/app'
 
 // 初始化主题 (修复 1.1 - 1.3)
@@ -31,7 +31,7 @@ const views = {
 }
 
 // --- Version Control Logic ---
-const appVersion = ref('v1.0.0') // Default version
+const appVersion = ref('v1.0.0 Beta')
 const hasNewVersion = ref(false)
 const newVersionInfo = ref({
   version: '',
@@ -63,6 +63,11 @@ const handleVersionClick = () => {
   if (hasNewVersion.value) {
     showUpdateModal.value = true
   }
+}
+
+const openGithub = (e) => {
+  e.stopPropagation()
+  BrowserOpenURL("https://github.com/qwq12738qwq/Easy-WSL-GUI")
 }
 
 const closeUpdateModal = () => {
@@ -108,7 +113,7 @@ onMounted(() => {
 
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-text">WSL-Manager</span>
+        <span class="brand-text">Easy-WSL-GUI</span>
       </div>
       
       <nav class="menu">
@@ -164,12 +169,16 @@ onMounted(() => {
       </nav>
 
       <!-- Version Info Area -->
-      <div class="version-area" @click="handleVersionClick" :class="{ 'clickable': hasNewVersion }">
-        <div class="version-content">
-          <Tag class="version-icon" :size="16" />
-          <span class="version-text">{{ appVersion }}</span>
+      <div class="version-area">
+        <div class="version-left" @click="handleVersionClick" :class="{ 'clickable': hasNewVersion }">
+          <span class="version-text">
+            {{ appVersion }}
+            <div v-if="hasNewVersion" class="version-badge"></div>
+          </span>
         </div>
-        <div v-if="hasNewVersion" class="version-badge"></div>
+        <button class="github-btn" @click="openGithub" title="GitHub Repository">
+          <Github :size="18" />
+        </button>
       </div>
     </aside>
 
@@ -188,10 +197,7 @@ onMounted(() => {
       <div v-if="showUpdateModal" class="modal-overlay" @click.self="closeUpdateModal">
         <div class="modal-window update-modal">
           <div class="modal-header">
-            <h3>版本更新</h3>
-            <button class="close-btn" @click="closeUpdateModal">
-              <X :size="20" />
-            </button>
+            <h3>{{ newVersionInfo.version }}</h3>
           </div>
           <div class="modal-body">
             <div class="update-meta">
@@ -336,33 +342,58 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  cursor: default;
-  transition: background-color var(--transition-fast);
-  height: 60px; /* Consistent height */
+  height: 60px;
 }
 
-.version-area.clickable {
-  cursor: pointer;
-}
-
-.version-area.clickable:hover {
-  background-color: var(--color-bg-hover);
-}
-
-.version-content {
+.version-left {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
   color: var(--color-text-secondary);
   font-size: 0.9rem;
 }
 
+.version-left.clickable {
+  cursor: pointer;
+}
+
+.version-left.clickable:hover .version-text {
+  color: var(--color-text-primary);
+}
+
+.version-text {
+  position: relative;
+  display: inline-block;
+}
+
 .version-badge {
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
   width: 6px;
   height: 6px;
   background-color: #ff4d4f; /* Red dot */
   border-radius: 50%;
-  box-shadow: 0 0 4px rgba(255, 77, 79, 0.5);
+  box-shadow: 0 0 0 2px var(--color-bg-sidebar);
+  z-index: 10;
+}
+
+.github-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 8px;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.github-btn:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-text-primary);
 }
 
 /* --- 主内容区 --- */
@@ -403,7 +434,7 @@ body {
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
+  /* backdrop-filter: blur(4px); Removed blur */
 }
 
 .update-modal {

@@ -105,11 +105,11 @@ const migrationForm = reactive({
 })
 
 const migrationSteps = ref([
-    { title: '准备环境', status: 'pending', keyword: ['prepare', 'checking', '准备'] },
+    { title: '准备环境', status: 'pending', keyword: ['prepare', 'checking', '准备','select-user'] },
     { title: '导出系统', status: 'pending', keyword: ['exporting', '导出'] },
     { title: '卸载系统', status: 'pending', keyword: ['uninstall', '卸载'] },
     { title: '迁移系统', status: 'pending', keyword: ['moving', 'transferring', '迁移'] },
-    { title: '选择默认用户', status: 'pending', keyword: ['select-user', '用户选择'] },
+    { title: '配置默认用户', status: 'pending', keyword: ['配置用户'] },
     { title: '还原用户', status: 'pending', keyword: ['还原'] }
 ])
 

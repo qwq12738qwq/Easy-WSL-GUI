@@ -30,6 +30,13 @@ type SystemSpecs struct {
 	LogicalCores  int `json:"logicalCores"`
 }
 
+type UpdateInfo struct {
+	Version     string `json:"version"`
+	UpdateLog   string `json:"updateLog"`
+	ReleaseDate string `json:"releaseDate"`
+	Url         string `json:"url"`
+}
+
 type App struct {
 	ctx context.Context
 }
@@ -44,6 +51,11 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// 延迟启动更新检测函数
+	go func() {
+		time.Sleep(10 * time.Second)
+		a.TriggerUpdateAlert()
+	}()
 }
 
 // SelectDirectory 弹出系统原生目录选择框
@@ -192,7 +204,7 @@ func (a *App) StartMigration(option MigrationOptions) error {
 	if err != nil {
 		runtime.EventsEmit(a.ctx, "migration:progress", "在wsl.conf中找不到默认用户,将寻找发行版内部用户组")
 		time.Sleep(2 * time.Second)
-		list, err := installWSL.GetWSLUserGroups(option.DistroName)
+		list, err := installWSL.GetWSLUsers(option.DistroName)
 		if err != nil {
 			runtime.EventsEmit(a.ctx, "migration:done", map[string]interface{}{
 				"status": "failed",
@@ -200,21 +212,24 @@ func (a *App) StartMigration(option MigrationOptions) error {
 			})
 			return err
 		}
-		runtime.EventsEmit(a.ctx, "migration:users", list[0].Users)
-		runtime.EventsOn(a.ctx, "migration:users", func(optionalData ...interface{}) {
+		runtime.EventsEmit(a.ctx, "migration:users", list)
+		// 堵塞机制,选择完成之后才继续往下执行
+		userChan := make(chan string)
+		runtime.EventsOn(a.ctx, "migration:select-user", func(optionalData ...interface{}) {
 			if len(optionalData) > 0 {
 				// 将 interface{} 转换为 string
 				username, ok := optionalData[0].(string)
 				if ok {
-					user_cache = username
-				} else {
-					return
+					userChan <- username
 				}
 			}
 		})
-
+		// 锁进程
+		user_cache = <-userChan
+	} else {
+		user_cache = user
 	}
-	user_cache = user
+
 	// 刷新Info
 	Info = installWSL.WSLinfo{
 		Linux_Version: option.DistroName,
@@ -394,6 +409,18 @@ func (a *App) GetSystemSpecs() SystemSpecs {
 		TotalMemoryGB: totalGB,
 		LogicalCores:  run.NumCPU(),
 	}
+}
+
+func (a *App) TriggerUpdateAlert() {
+	// 模拟获取到的更新信息
+	info := UpdateInfo{
+		Version:     "v2.0.0",
+		UpdateLog:   "1. 重大性能优化\n2. 修复已知 Bug\n3. 新增一键环境部署", // 使用 \n 换行
+		ReleaseDate: "2023-12-25",
+		Url:         "https://example.com/download/v2.0.0",
+	}
+
+	runtime.EventsEmit(a.ctx, "new-version", info)
 }
 
 func (a *App) CheckDockerInstalled(distroName string) bool { return false }

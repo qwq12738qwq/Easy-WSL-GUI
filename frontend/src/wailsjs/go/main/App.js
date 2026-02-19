@@ -94,6 +94,10 @@ export function StopDistro(arg1) {
   return window['go']['main']['App']['StopDistro'](arg1);
 }
 
+export function TriggerUpdateAlert() {
+  return window['go']['main']['App']['TriggerUpdateAlert']();
+}
+
 export function UninstallDistro(arg1) {
   return window['go']['main']['App']['UninstallDistro'](arg1);
 }

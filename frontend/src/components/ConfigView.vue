@@ -118,7 +118,7 @@ const migrationSteps = ref([
     { title: '导出系统', status: 'pending', keyword: ['exporting', '导出'] },
     { title: '卸载系统', status: 'pending', keyword: ['uninstall', '卸载'] },
     { title: '迁移系统', status: 'pending', keyword: ['moving', 'transferring', '迁移'] },
-    { title: '选择默认用户', status: 'pending', keyword: ['select-user', '用户选择'] },
+    { title: '配置默认用户', status: 'pending', keyword: ['select-user', '配置用户'] },
     { title: '还原用户', status: 'pending', keyword: ['还原'] }
 ])
 
@@ -622,7 +622,8 @@ const currentDistroStatus = computed(() => {
                                 <span class="status-dot"></span>
                                 {{ distro.status }}
                             </span>
-                            <span class="version-badge">v{{ distro.version }}</span>
+                            <span class="version-badge" v-if="distro.version !== '2'">v{{ distro.version }}</span>
+                            <span class="version-badge v2-fix" v-else>v{{ distro.version }}</span>
                         </div>
                     </div>
                     <div class="card-arrow">
@@ -709,7 +710,7 @@ const currentDistroStatus = computed(() => {
                     <!-- General Settings -->
                     <div v-if="activeTab === 'general'" class="tab-pane fade-in">
                         <div class="panel-header">
-                            <h4>{{ packageManagerName }} 软件源设置</h4>
+                            <h4>{{ packageManagerName }} 软件源设置 (Beta)</h4>
                             <p>配置系统的软件源镜像，加速软件下载和更新。</p>
                         </div>
                         
@@ -1257,6 +1258,11 @@ const currentDistroStatus = computed(() => {
     border-radius: 6px;
     line-height: normal;
     border: 1px solid transparent; /* 防止布局抖动 */
+}
+
+.version-badge.v2-fix {
+  position: relative;
+  top: 1px;
 }
 
 .card-arrow {

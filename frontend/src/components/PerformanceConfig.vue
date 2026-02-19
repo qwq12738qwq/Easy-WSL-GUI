@@ -278,8 +278,8 @@ const executeReset = async () => {
   <div class="performance-view-container">
     <div class="view-header">
       <div>
-        <h2>WSL2 性能配置</h2>
-        <p class="subtitle">管理 .wslconfig 全局配置，优化子系统运行效率。</p>
+        <h2>WSL2 配置 (Beta)</h2>
+        <p class="subtitle">管理 .wslconfig 全局配置</p>
       </div>
       <div class="header-actions">
         <button class="btn btn-secondary" @click="handleReset">恢复默认</button>
@@ -411,7 +411,7 @@ const executeReset = async () => {
             
             <div class="switch-item-inline" v-if="form.dnsTunneling">
                 <div class="switch-info">
-                    <span class="switch-label">尽力而为 DNS 解析</span>
+                    <span class="switch-label">强制空域名解析</span>
                     <span class="switch-annotation">Windows 将尝试解析 DNS 请求，忽略未知记录。</span>
                 </div>
                 <label class="switch">
@@ -423,7 +423,7 @@ const executeReset = async () => {
             <div class="switch-item-inline" v-if="form.dnsTunneling">
                 <div class="switch-info">
                     <span class="switch-label">使用 Windows DNS 客户端</span>
-                    <span class="switch-annotation">决定 Linux VM 中的 DNS 请求是否使用 Windows DNS 客户端解析。</span>
+                    <span class="switch-annotation">决定 WSL 中的 DNS 请求是否使用 Windows DNS 客户端解析。</span>
                 </div>
                 <label class="switch">
                   <input type="checkbox" v-model="form.useWindowsDnsCli">
@@ -434,7 +434,7 @@ const executeReset = async () => {
             <div class="switch-item-inline">
                 <div class="switch-info">
                     <span class="switch-label">DNS 代理</span>
-                    <span class="switch-annotation">将 Linux 中的 DNS 服务器配置为主机上的 NAT (仅适用于 NAT 模式)。</span>
+                    <span class="switch-annotation">将 WSL 中的 DNS 服务器配置为主机上的 NAT (仅适用于 NAT 模式)。</span>
                 </div>
                 <label class="switch">
                   <input type="checkbox" v-model="form.dnsProxy">

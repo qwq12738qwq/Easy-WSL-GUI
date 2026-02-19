@@ -51,4 +51,6 @@ export function StartMigration(arg1:main.MigrationOptions):Promise<void>;
 
 export function StopDistro(arg1:string):Promise<void>;
 
+export function TriggerUpdateAlert():Promise<void>;
+
 export function UninstallDistro(arg1:string):Promise<void>;

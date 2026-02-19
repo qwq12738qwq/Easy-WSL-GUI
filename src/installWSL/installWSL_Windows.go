@@ -231,6 +231,12 @@ func Init_Admin_PowerShell(Info WSLinfo, Action string) (*exec.Cmd, error) {
 			"sh", "-c",
 			"cat /etc/group",
 		), nil
+	case "UserList":
+		return exec.Command(
+			"wsl.exe", "-d", Info.Linux_Version, "-u", "root", "--",
+			"sh", "-c",
+			"cat /etc/passwd",
+		), nil
 	default:
 		return nil, errors.New("输入行为状态未注册")
 	}
@@ -624,6 +630,7 @@ func MovingPathWSL(ctx context.Context, Info WSLinfo) error {
 	runtime.EventsEmit(ctx, "migration:progress", "删除迁移残留......")
 	os.Remove(FilePath_string(Info))
 	time.Sleep(3 * time.Second)
+	Start_cmd(Info, "Stop")
 	// 发送完成信息
 	runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
 		"status": "success",

@@ -2,7 +2,7 @@
   <div class="view-card">
     <div class="setting-header">
       <h3>⚙️ 系统设置</h3>
-      <p>自定义您的 WSL 管理器外观与偏好</p>
+      <p>自定义您的管理器外观与偏好</p>
     </div>
     
     <div class="setting-list">
@@ -11,9 +11,12 @@
           <span class="item-title">外观模式</span>
           <span class="item-desc">切换浅色或深色主题外观</span>
         </div>
-        <button class="btn btn-secondary theme-toggle" @click="toggleTheme">
-          {{ isDark ? '🌙 深色模式' : '☀️ 亮色模式' }}
-        </button>
+        <div class="theme-switch">
+          <label class="switch">
+            <input type="checkbox" v-model="isDark" @change="handleThemeChange">
+            <span class="slider round"></span>
+          </label>
+        </div>
       </div>
 
       <div class="setting-group">
@@ -26,10 +29,12 @@
             <button class="btn btn-secondary" @click="toggleDetail">
               {{ isDetailExpanded ? '🔼 收起信息' : 'ℹ️ 详细信息' }}
             </button>
+            <!-- 暂时禁用检查更新功能
             <button class="btn" :class="updateBtnClass" @click="checkUpdate" :disabled="isChecking || updateStatus === 'success' || updateStatus === 'no-update'">
               <span v-if="isChecking" class="spinner-sm"></span>
               {{ updateBtnText }}
             </button>
+            -->
           </div>
         </div>
         
@@ -77,8 +82,7 @@ const updateBtnClass = computed(() => {
     return 'btn-primary'
 })
 
-const toggleTheme = () => {
-  isDark.value = !isDark.value
+const handleThemeChange = () => {
   const theme = isDark.value ? 'dark' : 'light'
   setTheme(theme)
 }
@@ -217,8 +221,71 @@ onMounted(async () => {
   gap: var(--spacing-sm);
 }
 
-.theme-toggle {
-  min-width: 120px;
+/* Toggle Switch - Copied from PerformanceConfig.vue for consistency */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #d9d9d9;
+  transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.slider.round {
+  border-radius: 22px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--color-brand);
+}
+
+input:checked + .slider:before {
+  transform: translateX(18px);
+}
+
+/* Dark mode specific for toggle */
+[data-theme='dark'] .slider {
+    background-color: #4a4a4a;
+}
+[data-theme='dark'] input:checked + .slider {
+    background-color: var(--color-brand);
+}
+
+.theme-switch {
+  display: flex;
+  align-items: center;
 }
 
 /* WSL Version Detail Styles */

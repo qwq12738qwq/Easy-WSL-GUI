@@ -79,3 +79,48 @@ func GetWSLUserGroups(distroName string) ([]WSLGroup, error) {
 
 	return groups, nil
 }
+
+func GetWSLUsers(distroName string) ([]string, error) {
+	if distroName == "" {
+		return nil, fmt.Errorf("distro name is empty")
+	}
+
+	info := WSLinfo{
+		Linux_Version: distroName,
+	}
+
+	out, err := Start_cmd(info, "UserList")
+	if err != nil {
+		return nil, err
+	}
+
+	content := Reduce_Unicode(out)
+	if strings.TrimSpace(content) == "" {
+		return []string{}, nil
+	}
+
+	lines := strings.Split(content, "\n")
+	var users []string
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// /etc/passwd format: username:password:UID:GID:gecos:home:shell
+		parts := strings.Split(line, ":")
+		if len(parts) >= 3 && parts[0] != "" {
+			uid, err := strconv.Atoi(parts[2])
+			if err == nil {
+				// Filter out system users (UID < 1000) and nobody (UID 65534)
+				// Usually regular users start from UID 1000
+				if uid >= 1000 && uid != 65534 {
+					users = append(users, parts[0])
+				}
+			}
+		}
+	}
+
+	return users, nil
+}

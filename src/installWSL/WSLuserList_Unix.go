@@ -10,3 +10,5 @@ type WSLGroup struct {
 }
 
 func GetWSLUserGroups(distroName string) ([]WSLGroup, error) { return nil, nil }
+
+func GetWSLUsers(distroName string) ([]string, error) { return nil, nil }
