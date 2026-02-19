@@ -30,6 +30,10 @@ export function GetAPTSource(arg1) {
   return window['go']['main']['App']['GetAPTSource'](arg1);
 }
 
+export function GetAppVersion() {
+  return window['go']['main']['App']['GetAppVersion']();
+}
+
 export function GetDistroList() {
   return window['go']['main']['App']['GetDistroList']();
 }

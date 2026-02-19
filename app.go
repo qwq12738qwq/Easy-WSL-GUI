@@ -19,6 +19,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+const (
+	CurrentAppVersion = "v1.0.0-Beta"
+	UpdateJsonUrl     = "https://gitee.com/MrLi114514/wsl_package/raw/master/Update.json"
+)
+
 type MigrationOptions struct {
 	SourcePath string `json:"sourcePath"`
 	TargetPath string `json:"targetPath"`
@@ -411,16 +416,27 @@ func (a *App) GetSystemSpecs() SystemSpecs {
 	}
 }
 
+// GetAppVersion 获取当前应用版本
+func (a *App) GetAppVersion() string {
+	return CurrentAppVersion
+}
+
 func (a *App) TriggerUpdateAlert() {
-	// 模拟获取到的更新信息
-	info := UpdateInfo{
-		Version:     "v2.0.0",
-		UpdateLog:   "1. 重大性能优化\n2. 修复已知 Bug\n3. 新增一键环境部署", // 使用 \n 换行
-		ReleaseDate: "2023-12-25",
-		Url:         "https://example.com/download/v2.0.0",
+	info, err := networkGUI.CheckForUpdate(CurrentAppVersion, UpdateJsonUrl)
+	if err != nil {
+		return
 	}
 
-	runtime.EventsEmit(a.ctx, "new-version", info)
+	if info != nil {
+		updateData := UpdateInfo{
+			Version:     info.Version,
+			UpdateLog:   info.UpdateLog,
+			ReleaseDate: info.ReleaseDate,
+			Url:         info.Url,
+		}
+		// 发送更新信息
+		runtime.EventsEmit(a.ctx, "new-version", updateData)
+	}
 }
 
 func (a *App) CheckDockerInstalled(distroName string) bool { return false }

@@ -19,6 +19,8 @@ export function EnableWSLFeature():Promise<void>;
 
 export function GetAPTSource(arg1:string):Promise<string>;
 
+export function GetAppVersion():Promise<string>;
+
 export function GetDistroList():Promise<Array<network.DistroItem>>;
 
 export function GetDistroStats():Promise<Array<runtimeGUI.List>>;

@@ -97,3 +97,7 @@ export function StopDistro(arg1) {
 export function UninstallDistro(arg1) {
   return window['go']['main']['App']['UninstallDistro'](arg1);
 }
+
+export function GetAppVersion() {
+  return window['go']['main']['App']['GetAppVersion']();
+}

@@ -8,6 +8,7 @@ import PerformanceConfig from './components/PerformanceConfig.vue'
 import ConfigView from './components/ConfigView.vue'
 import EnvironmentView from './components/EnvironmentView.vue'
 import { initTheme } from './utils/theme'
+import { GetAppVersion } from './wailsjs/go/main/App'
 import { EventsOn, BrowserOpenURL } from './wailsjs/runtime/runtime'
 import { Home, Download, Settings, Tag, X, Info, Cpu, Sliders, LayoutGrid, Github } from 'lucide-vue-next'
 import { useAppStore } from './stores/app'
@@ -86,7 +87,16 @@ const goToUpdate = () => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 获取当前版本号
+  try {
+    const ver = await GetAppVersion()
+    if (ver) {
+      appVersion.value = ver
+    }
+  } catch (e) {
+    console.error("获取版本信息失败:", e)
+  }
   // Requirement 6: Listen to 'new-version' event
   EventsOn("new-version", (data) => {
     console.log("New version event received:", data)
