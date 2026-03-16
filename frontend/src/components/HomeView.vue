@@ -6,6 +6,9 @@ import { ArrowRightLeft, Play, FolderOpen, Square } from 'lucide-vue-next'
 import { EventsOn, EventsOff, BrowserOpenURL, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { useAppStore } from '../stores/app'
 import { getDistroIcon } from '../utils/icon'
+import CpuIcon from '../assets/icons/HomeView/cpu.png'
+import MemIcon from '../assets/icons/HomeView/mem.png'
+import StorageIcon from '../assets/icons/HomeView/storage.png'
 
 const appStore = useAppStore()
 const handleCardClick = (name) => {
@@ -646,7 +649,7 @@ const getMemPercent = (used, total) => {
         <div class="metrics-box" v-if="item.status === 'Running'">
           <div class="metric-row">
             <div class="label-group">
-                <span class="label-icon">⚡</span>
+                <img :src="CpuIcon" class="label-icon" />
                 <span class="label">CPU</span>
             </div>
             <div class="progress-wrapper">
@@ -656,7 +659,7 @@ const getMemPercent = (used, total) => {
           </div>
           <div class="metric-row">
             <div class="label-group">
-                <span class="label-icon">🧠</span>
+                <img :src="MemIcon" class="label-icon" />
                 <span class="label">内存</span>
             </div>
             <div class="progress-wrapper">
@@ -667,7 +670,7 @@ const getMemPercent = (used, total) => {
             </div>
           </div>
           <div class="disk-info">
-              <span class="disk-icon">💾</span> 磁盘占用: {{ item.stats.diskText || item.stats.disk }}
+              <img :src="StorageIcon" class="disk-icon" /> 磁盘占用: {{ item.stats.diskText || item.stats.disk }}
           </div>
         </div>
         
@@ -1043,21 +1046,26 @@ const getMemPercent = (used, total) => {
 }
 
 /* --- 卡片样式 --- */
-.distro-card { 
-  background: var(--color-bg-card); 
+.distro-card {
+  background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: 16px; 
-  padding: 24px; 
-  position: relative; 
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
+  cursor: pointer;
 }
 
-.distro-card:hover { 
-  transform: translateY(-5px);
+.distro-card:hover {
+  transform: translateY(-5px) scale(1.01);
   box-shadow: var(--shadow-md);
   border-color: var(--color-brand);
+}
+
+.distro-card:active {
+    transform: scale(0.99);
 }
 
 .config-error {
@@ -1194,7 +1202,7 @@ const getMemPercent = (used, total) => {
 
 .metric-row { display: flex; flex-direction: column; gap: 6px; }
 .label-group { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-secondary); }
-.label-icon { font-size: 14px; }
+.label-icon { width: 16px; height: 16px; object-fit: contain; }
 
 .progress-wrapper { display: flex; align-items: center; gap: 10px; }
 .progress { flex: 1; height: 6px; background: var(--color-bg-hover); border-radius: 3px; overflow: hidden; }
@@ -1206,6 +1214,7 @@ const getMemPercent = (used, total) => {
 .value-text { font-size: 11px; font-family: 'Consolas', monospace; color: var(--color-text-primary); width: 60px; text-align: right; }
 
 .disk-info { font-size: 11px; color: var(--color-text-secondary); display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+.disk-icon { width: 16px; height: 16px; object-fit: contain; }
 
 /* 离线状态 */
 .offline-icon { font-size: 24px; opacity: 0.6; }
@@ -1374,19 +1383,32 @@ const getMemPercent = (used, total) => {
 .card-actions {
     position: absolute; top: 12px; right: 12px;
     display: flex; gap: 4px;
-    opacity: 0; transition: opacity 0.2s;
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
 }
-.distro-card:hover .card-actions { opacity: 1; }
+.distro-card:hover .card-actions { 
+    opacity: 1; 
+    transform: translateY(0);
+}
 
 .action-btn {
     width: 28px; height: 28px;
     border-radius: 50%;
-    border: none; background: transparent;
+    border: none; background: var(--color-bg-card);
     color: var(--color-text-secondary);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; transition: all 0.2s;
+    box-shadow: var(--shadow-sm);
 }
-.action-btn:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+.action-btn:hover { 
+    background: var(--color-bg-hover); 
+    color: var(--color-text-primary);
+    transform: scale(1.1);
+}
+.stop-action:hover { background: rgba(255, 77, 79, 0.15); color: var(--color-error); }
+.folder-action:hover { background: rgba(24, 144, 255, 0.15); color: var(--color-brand); }
+.uninstall-action:hover { background: rgba(255, 77, 79, 0.15); color: var(--color-error); }
+.migrate-action:hover { background: var(--color-bg-active); color: var(--color-brand); }
 .stop-action:hover { background: rgba(255, 77, 79, 0.1); color: var(--color-error); }
 .folder-action:hover { background: rgba(24, 144, 255, 0.1); color: var(--color-brand); }
 .uninstall-action:hover { background: rgba(255, 77, 79, 0.1); color: var(--color-error); }

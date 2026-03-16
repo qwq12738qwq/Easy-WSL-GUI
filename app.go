@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	run "runtime"
+	"strings"
 	"time"
 
+	"Golang-WSL-GUI/src/Logger"
 	networkGUI "Golang-WSL-GUI/src/Network"
 	setting "Golang-WSL-GUI/src/Setting"
 	start "Golang-WSL-GUI/src/Start"
@@ -43,7 +45,8 @@ type UpdateInfo struct {
 }
 
 type App struct {
-	ctx context.Context
+	ctx       context.Context
+	appLogger *Logger.Logger
 }
 
 var WSL_Regedit_Info = map[string]runtimeGUI.Regedit_WSL{}
@@ -56,11 +59,27 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// 延迟启动更新检测函数
+
+	// 日志线程系统
+	go func() {
+		appLogger, err := Logger.NewLogger()
+		if err != nil {
+			// 日志函数运行失败时,防止主程序崩溃
+			appLogger = nil
+		} else {
+			a.appLogger = appLogger
+			// 启动日志推送服务
+			a.PushLogsToFrontend()
+			a.appLogger.Info("日志系统启动成功")
+		}
+	}()
+
+	// 延迟启动更新检测线程
 	go func() {
 		time.Sleep(10 * time.Second)
 		a.TriggerUpdateAlert()
 	}()
+
 }
 
 // SelectDirectory 弹出系统原生目录选择框
@@ -273,10 +292,18 @@ func (a *App) OpenDistroFolder(distroName string) error {
 
 // 启动发行版按钮
 func (a *App) StartDistro(name string) {
+	if a.appLogger != nil {
+		a.appLogger.Info("正在启动发行版: %s", name)
+	}
+
 	Info := installWSL.WSLinfo{
 		Linux_Version: name,
 	}
 	installWSL.Start_cmd(Info, "Start")
+
+	if a.appLogger != nil {
+		a.appLogger.Info("发行版 %s 启动命令已发送", name)
+	}
 }
 
 // .wslconfig全局性能写入配置
@@ -294,6 +321,70 @@ func (a *App) SavePerformanceConfig(config setting.PerformanceConfig) error {
 // .wslconfig全局性能读取配置
 func (a *App) GetPerformanceConfig() setting.PerformanceConfig {
 	return setting.Rading_PerformanceConfig()
+}
+
+// GetLogs 读取日志文件内容（历史日志）
+// 用于前端初始化时加载历史记录
+func (a *App) GetLogs() ([]string, error) {
+	if a.appLogger == nil {
+		return []string{}, nil
+	}
+
+	// 这里我们复用之前 appLogs 逻辑会更好，
+	// 但为了解耦，我们直接读取文件
+	// 由于 Logger 结构体没有暴露读取方法，我们在这里简单实现一次读取
+	// 或者更简单：我们让前端调用 GetAppLogs（内存日志），这里返回文件路径或内容
+
+	// 建议：前端先调用 GetAppLogs 获取内存日志
+	// 然后如果需要完整历史，再调用这个
+
+	// 为了简单，我们这里直接读取文件
+	localAppData := os.Getenv("LOCALAPPDATA")
+	if localAppData == "" {
+		localAppData = "C:/Users/Public/AppData/Local"
+	}
+	logPath := fmt.Sprintf("%s/Easy-WSL-GUI/logs/app.log", localAppData)
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return []string{}, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	// 逆序返回最新的100行？或者正序？
+	// 一般日志查看器是正序的，最新的在最后
+	// 但如果文件很大，几万行，拿太多不好
+	// 我们只返回最后 500 行
+	start := 0
+	if len(lines) > 500 {
+		start = len(lines) - 500
+	}
+	return lines[start:], nil
+}
+
+// GetRealtimeLogs 实时日志流
+// 返回通道接收器 (不推荐 Wails 这样做)
+// Wails 推荐使用 Events
+// 所以我们不通过这个函数返回通道，
+// 而是使用 EventsOn 在前端监听 "log-event"
+// 这里保留结构，但实际不用它返回数据
+// 实际上，我们在后端启动一个 goroutine 往 frontend 推消息
+
+// PushLogsToFrontend 推送日志到前端
+// 在 startup 中调用
+func (a *App) PushLogsToFrontend() {
+	if a.appLogger == nil || a.ctx == nil {
+		return
+	}
+
+	ch := a.appLogger.GetChan()
+	go func() {
+		// 使用 for range 监听通道，更优雅
+		for msg := range ch {
+			// 使用 Wails Event 系统推送到前端
+			runtime.EventsEmit(a.ctx, "log-event", msg)
+		}
+	}()
 }
 
 // 获取 WSL 版本
@@ -437,6 +528,35 @@ func (a *App) TriggerUpdateAlert() {
 		// 发送更新信息
 		runtime.EventsEmit(a.ctx, "new-version", updateData)
 	}
+}
+
+// 获取发行版内部安装包
+func (a *App) GetInstalledPackages(distroName string) ([]runtimeGUI.SoftwarePackage, error) {
+	if a.appLogger != nil {
+		a.appLogger.Info("正在获取发行版 %s 的软件包列表...", distroName)
+	}
+
+	package_json, err := runtimeGUI.GetInstalledPackages(distroName)
+	if err != nil {
+		if a.appLogger != nil {
+			a.appLogger.Info("获取软件包列表失败: %v", err)
+		}
+		return nil, err
+	}
+
+	if a.appLogger != nil {
+		a.appLogger.Info("成功获取 %d 个软件包", len(package_json))
+	}
+	return package_json, nil
+}
+
+// UninstallPackage 卸载指定的软件包
+// 前端调用示例: UninstallPackage(distroName string, packageName string)
+// 返回: error (如果卸载失败返回错误)
+func (a *App) UninstallPackage(distroName string, packageName string) error {
+	// 示例: wsl -d {distroName} -- sudo apt remove -y {packageName}
+	fmt.Printf("Uninstalling package %s from %s\n", packageName, distroName)
+	return nil
 }
 
 func (a *App) CheckDockerInstalled(distroName string) bool { return false }

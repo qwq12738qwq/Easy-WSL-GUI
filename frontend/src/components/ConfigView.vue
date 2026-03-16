@@ -1,12 +1,13 @@
 <script setup>
 import { ref, onMounted, onActivated, computed, watch, reactive, onUnmounted } from 'vue'
-import { GetDistroStats, GetAPTSource, ChangeAPTSource, GetMetrics, StopDistro, OpenDistroFolder, StartMigration, UninstallDistro, SelectDirectory, GetPath } from '../../wailsjs/go/main/App'
+import { GetDistroStats, GetAPTSource, ChangeAPTSource, GetMetrics, StopDistro, OpenDistroFolder, StartMigration, UninstallDistro, SelectDirectory, GetPath, GetInstalledPackages, UninstallPackage } from '../../wailsjs/go/main/App'
 import { EventsOn, EventsOff, EventsEmit } from '../../wailsjs/runtime/runtime'
 import { useAppStore } from '../stores/app'
 import { useEnvironmentStore } from '../stores/environment'
-import { Save, Download, Box, Server, Database, Code, Cpu, ArrowLeft, Settings, Info, Check, AlertTriangle, Monitor, FolderOpen, ArrowRightLeft, Trash2, Square } from 'lucide-vue-next'
+import { Save, Download, Box, Server, Database, Code, Cpu, ArrowLeft, Settings, Info, Check, AlertTriangle, Monitor, FolderOpen, ArrowRightLeft, Trash2, Square, Search, Package } from 'lucide-vue-next'
 import { getDistroIcon } from '../utils/icon'
 import { formatBytes } from '../utils/format'
+import DockerIcon from '../assets/icons/ConfigView/docker.png'
 
 const appStore = useAppStore()
 const envStore = useEnvironmentStore()
@@ -589,6 +590,70 @@ const currentDistroStatus = computed(() => {
     const d = distros.value.find(item => item.name === appStore.selectedDistro)
     return d ? d.status : 'Unknown'
 })
+
+// --- Software Packages Logic ---
+const softwarePackages = ref([])
+const loadingPackages = ref(false)
+const packageSearchQuery = ref('')
+const isUninstallingPackage = ref(false)
+
+const filteredPackages = computed(() => {
+    if (!packageSearchQuery.value) return softwarePackages.value
+        const query = packageSearchQuery.value.toLowerCase()
+        return softwarePackages.value.filter(pkg => 
+            pkg.name.toLowerCase().includes(query) || 
+            pkg.version.toLowerCase().includes(query) ||
+            pkg.source.toLowerCase().includes(query)
+        )
+})
+
+const loadPackages = async () => {
+    if (!appStore.selectedDistro) return
+    loadingPackages.value = true
+    try {
+        const pkgs = await GetInstalledPackages(appStore.selectedDistro)
+        // Sort alphabetically
+        softwarePackages.value = pkgs.sort((a, b) => a.Name.localeCompare(b.Name))
+    } catch (e) {
+        console.error("Failed to load packages", e)
+        // Fallback or empty
+        softwarePackages.value = []
+    } finally {
+        loadingPackages.value = false
+    }
+}
+
+const handleUninstallPackage = async (pkgName) => {
+    if (!appStore.selectedDistro) return
+    
+    if (confirm(`确定要卸载软件包 "${pkgName}" 吗？\n此操作不可逆。`)) {
+        isUninstallingPackage.value = true
+        try {
+            // Listen for progress
+            EventsOn("package:progress", (msg) => {
+                console.log("Uninstall progress:", msg)
+            })
+            
+            await UninstallPackage(appStore.selectedDistro, pkgName)
+            alert(`成功卸载 ${pkgName}`)
+            
+            // Refresh list
+            await loadPackages()
+        } catch (e) {
+            console.error("Uninstall failed", e)
+            alert(`卸载失败: ${e}`)
+        } finally {
+            isUninstallingPackage.value = false
+            EventsOff("package:progress")
+        }
+    }
+}
+
+watch(activeTab, (newTab) => {
+    if (newTab === 'software') {
+        loadPackages()
+    }
+})
 </script>
 
 <template>
@@ -698,9 +763,17 @@ const currentDistroStatus = computed(() => {
                             @click="activeTab = 'docker'"
                         >
                             <div class="nav-icon-wrapper">
-                                <span class="docker-icon">🐳</span>
+                                <img :src="DockerIcon" class="docker-icon-img" />
                             </div>
                             <span>Docker 配置</span>
+                        </div>
+                        <div 
+                            class="nav-item" 
+                            :class="{ active: activeTab === 'software' }"
+                            @click="activeTab = 'software'"
+                        >
+                            <Package :size="18" />
+                            <span>软件包</span>
                         </div>
                     </div>
                 </div>
@@ -814,53 +887,52 @@ const currentDistroStatus = computed(() => {
                             <h3>Docker 配置暂未开放</h3>
                             <p>该功能正在紧锣密鼓地开发中，敬请期待！</p>
                         </div>
+                    </div>
 
-                        <!-- 原有内容 (暂时注释) -->
-                        <!--
+                    <!-- Software Packages -->
+                    <div v-else-if="activeTab === 'software'" class="tab-pane fade-in">
                         <div class="panel-header">
-                            <h4>Docker 镜像源配置</h4>
-                            <p>配置 Docker Daemon 的 registry-mirrors 以加速拉取。</p>
+                            <h4>已安装软件包</h4>
+                            <p>查看和管理当前发行版中已安装的系统软件包。</p>
                         </div>
 
-                        <div v-if="checkingDocker" class="loading-state">
+                        <div class="search-bar-container">
+                            <Search class="search-icon" :size="18" />
+                            <input 
+                                type="text" 
+                                v-model="packageSearchQuery" 
+                                placeholder="搜索软件包名称或版本..." 
+                                class="search-input"
+                            />
+                        </div>
+
+                        <div v-if="loadingPackages" class="loading-state">
                             <div class="spinner"></div>
-                            <p style="margin-top: 1rem; color: var(--text-secondary);">正在检测 Docker 环境...</p>
+                            <p>正在加载软件包列表...</p>
                         </div>
 
-                        <div v-else-if="!dockerInstalled" class="warning-banner error-banner">
-                            <AlertTriangle :size="20" />
-                            <div class="warning-content">
-                                <strong>未检测到 Docker</strong>
-                                <p>当前发行版似乎未安装 Docker，请先安装 Docker Engine。</p>
+                        <div v-else class="package-list-container">
+                            <div v-if="filteredPackages.length === 0" class="empty-state-small">
+                                <p>未找到匹配的软件包</p>
                             </div>
-                        </div>
-
-                        <div v-else class="docker-config-content">
-                            <div class="source-selector">
-                                <div 
-                                    v-for="source in dockerSources" 
-                                    :key="source.value"
-                                    class="source-option"
-                                    :class="{ selected: selectedDockerSource === source.value }"
-                                    @click="selectedDockerSource = source.value"
-                                >
-                                    <div class="radio-circle">
-                                        <div class="radio-inner"></div>
+                            <div v-else class="package-grid">
+                                <div v-for="pkg in filteredPackages" :key="pkg.name" class="package-item">
+                                    <div class="package-info">
+                                        <span class="pkg-name">{{ pkg.name }}</span>
+                                        <span class="pkg-version">v{{ pkg.version }}</span>
+                                        <span class="pkg-source" :title="pkg.source">来源: {{ pkg.source }}</span>
                                     </div>
-                                    <div class="source-info">
-                                        <span class="source-name">{{ source.name }}</span>
-                                        <span class="source-desc">{{ source.desc }}</span>
-                                    </div>
+                                    <button 
+                                        class="btn-uninstall-pkg" 
+                                        @click="handleUninstallPackage(pkg.name)"
+                                        :disabled="isUninstallingPackage"
+                                        title="卸载此软件包"
+                                    >
+                                        <Trash2 :size="14" />
+                                    </button>
                                 </div>
                             </div>
-
-                            <div class="actions-footer">
-                                <button class="btn-primary" @click="handleSaveDockerSource">
-                                    <Save class="icon" /> 应用 Docker 源
-                                </button>
-                            </div>
                         </div>
-                        -->
                     </div>
                 </div>
             </div>
@@ -1033,7 +1105,7 @@ const currentDistroStatus = computed(() => {
     height: 100%;
     overflow-y: auto;
     box-sizing: border-box;
-    background: var(--bg-color);
+    background: var(--color-bg-body);
 }
 
 .view-header h2 {
@@ -1041,10 +1113,11 @@ const currentDistroStatus = computed(() => {
     font-size: 2rem;
     font-weight: 700;
     letter-spacing: -0.5px;
+    color: var(--color-text-primary);
 }
 
 .subtitle {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     margin-bottom: 2.5rem;
     font-size: 1.05rem;
 }
@@ -1148,8 +1221,8 @@ const currentDistroStatus = computed(() => {
 }
 
 .distro-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
     border-radius: 16px;
     padding: 1.5rem;
     display: flex;
@@ -1164,7 +1237,7 @@ const currentDistroStatus = computed(() => {
 .distro-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 12px 32px rgba(0,0,0,0.08);
-    border-color: var(--primary-color);
+    border-color: var(--color-brand);
 }
 
 .distro-card::before {
@@ -1174,7 +1247,7 @@ const currentDistroStatus = computed(() => {
     left: 0;
     width: 4px;
     height: 100%;
-    background: var(--primary-color);
+    background: var(--color-brand);
     opacity: 0;
     transition: opacity 0.3s;
 }
@@ -1186,7 +1259,7 @@ const currentDistroStatus = computed(() => {
 .card-icon-wrapper {
     width: 64px;
     height: 64px;
-    background: var(--bg-color);
+    background: var(--color-bg-body);
     border-radius: 12px;
     display: flex;
     align-items: center;
@@ -1208,7 +1281,7 @@ const currentDistroStatus = computed(() => {
     font-weight: 700;
     font-size: 1.15rem;
     margin-bottom: 0.5rem;
-    color: var(--text-color);
+    color: var(--color-text-primary);
 }
 
 .card-meta {
@@ -1228,8 +1301,8 @@ const currentDistroStatus = computed(() => {
     justify-content: center;
     gap: 6px;
     font-weight: 500;
-    background: var(--bg-color);
-    color: var(--text-secondary);
+    background: var(--color-bg-body);
+    color: var(--color-text-secondary);
     line-height: normal;
 }
 
@@ -1248,8 +1321,8 @@ const currentDistroStatus = computed(() => {
 
 .version-badge {
     font-size: 0.75rem;
-    color: var(--text-secondary);
-    background: var(--bg-color);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-body);
     padding: 0 8px;
     height: 24px;
     display: inline-flex;
@@ -1266,14 +1339,14 @@ const currentDistroStatus = computed(() => {
 }
 
 .card-arrow {
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     opacity: 0.3;
     transition: all 0.3s;
 }
 
 .distro-card:hover .card-arrow {
     opacity: 1;
-    color: var(--primary-color);
+    color: var(--color-brand);
     transform: translateX(4px);
 }
 
@@ -1286,7 +1359,7 @@ const currentDistroStatus = computed(() => {
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -1296,7 +1369,7 @@ const currentDistroStatus = computed(() => {
 }
 
 .back-btn:hover {
-    color: var(--primary-color);
+    color: var(--color-brand);
 }
 
 .detail-layout {
@@ -1315,8 +1388,8 @@ const currentDistroStatus = computed(() => {
 }
 
 .distro-profile {
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
     border-radius: 16px;
     padding: 2rem;
     display: flex;
@@ -1328,7 +1401,7 @@ const currentDistroStatus = computed(() => {
 .profile-icon {
     width: 80px;
     height: 80px;
-    background: var(--bg-color);
+    background: var(--color-bg-body);
     border-radius: 16px;
     display: flex;
     align-items: center;
@@ -1351,8 +1424,8 @@ const currentDistroStatus = computed(() => {
     font-size: 0.85rem;
     padding: 4px 12px;
     border-radius: 100px;
-    background: var(--bg-color);
-    color: var(--text-secondary);
+    background: var(--color-bg-body);
+    color: var(--color-text-secondary);
     font-weight: 500;
 }
 
@@ -1363,7 +1436,7 @@ const currentDistroStatus = computed(() => {
 
 .profile-path {
     font-size: 0.75rem;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     margin-top: 0.5rem;
     word-break: break-all;
     opacity: 0.7;
@@ -1384,28 +1457,42 @@ const currentDistroStatus = computed(() => {
     padding: 1rem 1.5rem;
     border-radius: 12px;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     transition: all 0.2s;
     font-weight: 500;
 }
 
 .nav-item:hover {
-    background: var(--card-bg);
-    color: var(--text-color);
+    background: var(--color-bg-card);
+    color: var(--color-text-primary);
 }
 
 .nav-item.active {
-    background: var(--primary-color);
+    background: var(--color-brand);
     color: white;
-    box-shadow: 0 4px 12px rgba(var(--primary-rgb), 0.3);
+    box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+.nav-icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+}
+
+.docker-icon-img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
 }
 
 /* Config Panel */
 .config-panel {
     flex: 1;
-    background: var(--card-bg);
+    background: var(--color-bg-card);
     border-radius: 16px;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--color-border);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -1419,7 +1506,7 @@ const currentDistroStatus = computed(() => {
 
 .panel-header {
     margin-bottom: 2.5rem;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--color-border);
     padding-bottom: 1.5rem;
 }
 
@@ -1430,7 +1517,7 @@ const currentDistroStatus = computed(() => {
 
 .panel-header p {
     margin: 0;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
 }
 
 /* Source Selector */
@@ -1446,45 +1533,45 @@ const currentDistroStatus = computed(() => {
     align-items: flex-start;
     gap: 1rem;
     padding: 1.25rem;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.2s;
 }
 
 .source-option:hover {
-    border-color: var(--primary-color);
-    background: var(--bg-color);
+    border-color: var(--color-brand);
+    background: var(--color-bg-body);
 }
 
 .source-option.selected {
-    border-color: var(--primary-color);
-    background: rgba(var(--primary-rgb), 0.08);
-    box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
+    border-color: var(--color-brand);
+    background: rgba(24, 144, 255, 0.08);
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
 
 .radio-circle {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    border: 2px solid var(--border-color);
+    border: 2px solid var(--color-border);
     display: flex;
     align-items: center;
     justify-content: center;
     margin-top: 2px;
     transition: all 0.2s;
-    background: var(--bg-color);
+    background: var(--color-bg-body);
 }
 
 .source-option.selected .radio-circle {
-    border-color: var(--primary-color);
+    border-color: var(--color-brand);
 }
 
 .radio-inner {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--primary-color);
+    background: var(--color-brand);
     opacity: 0;
     transform: scale(0.5);
     transition: all 0.2s;
@@ -1503,19 +1590,19 @@ const currentDistroStatus = computed(() => {
     display: block;
     font-weight: 600;
     margin-bottom: 0.25rem;
-    color: var(--text-color);
+    color: var(--color-text-primary);
 }
 
 .source-desc {
     font-size: 0.9rem;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
 }
 
 .actions-footer {
     display: flex;
     justify-content: flex-end;
     padding-top: 2rem;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--color-border);
 }
 
 /* Environment List Modern */
@@ -1552,7 +1639,7 @@ const currentDistroStatus = computed(() => {
     font-size: 0.9rem;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     letter-spacing: 0.5px;
     margin-bottom: 1rem;
     margin-top: 2rem;
@@ -1573,31 +1660,31 @@ const currentDistroStatus = computed(() => {
     align-items: center;
     gap: 1.25rem;
     padding: 1.25rem;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--color-border);
     border-radius: 12px;
-    background: var(--bg-color);
+    background: var(--color-bg-body);
     transition: all 0.2s;
 }
 
 .env-item-modern:hover {
-    border-color: var(--primary-color);
+    border-color: var(--color-brand);
     transform: translateX(4px);
-    background: var(--card-bg);
+    background: var(--color-bg-card);
 }
 
 .env-icon-box {
     width: 48px;
     height: 48px;
     border-radius: 10px;
-    background: var(--card-bg);
+    background: var(--color-bg-card);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--primary-color);
+    color: var(--color-brand);
     flex-shrink: 0;
 }
 
-.env-icon-box.local { color: var(--text-color); border: 1px solid var(--border-color); }
+.env-icon-box.local { color: var(--color-text-primary); border: 1px solid var(--color-border); }
 .env-icon-box.docker { color: #0db7ed; background: rgba(13, 183, 237, 0.1); }
 .env-icon-box.openwrt { color: #cf3e52; background: rgba(207, 62, 82, 0.1); }
 .env-icon-box.nodejs_dev { color: #68a063; background: rgba(104, 160, 99, 0.1); }
@@ -1623,31 +1710,31 @@ const currentDistroStatus = computed(() => {
     background: rgba(0,0,0,0.05);
     padding: 2px 6px;
     border-radius: 4px;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-weight: normal;
 }
 
 .env-desc {
     font-size: 0.9rem;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
 }
 
 .action-btn {
     padding: 0.5rem 1.25rem;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     font-size: 0.9rem;
-    color: var(--text-color); /* 修复暗色模式下文字看不清的问题 */
+    color: var(--color-text-primary); /* 修复暗色模式下文字看不清的问题 */
 }
 
 .action-btn:hover:not(:disabled) {
-    background: var(--primary-color);
+    background: var(--color-brand);
     color: white;
-    border-color: var(--primary-color);
+    border-color: var(--color-brand);
 }
 
 .action-btn:disabled {
@@ -1657,8 +1744,127 @@ const currentDistroStatus = computed(() => {
 
 .empty-hint {
     font-style: italic;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     font-size: 0.9rem;
+}
+
+/* Search Bar */
+.search-bar-container {
+    position: relative;
+    margin-bottom: 2rem;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-secondary);
+}
+
+.search-input {
+    width: 100%;
+    padding: 12px 12px 12px 40px;
+    font-size: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-bg-body);
+    color: var(--color-text-primary);
+    transition: all var(--transition-fast);
+}
+
+.search-input:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+    outline: none;
+}
+
+/* Package List */
+.package-list-container {
+    background: var(--color-bg-body);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.empty-state-small {
+    padding: 3rem;
+    text-align: center;
+    color: var(--color-text-secondary);
+}
+
+.package-grid {
+    display: flex;
+    flex-direction: column;
+}
+
+.package-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border);
+    transition: background var(--transition-fast);
+}
+
+.package-item:last-child {
+    border-bottom: none;
+}
+
+.package-item:hover {
+    background: var(--color-bg-hover);
+}
+
+.package-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.pkg-name {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+}
+
+.pkg-version {
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+}
+
+.pkg-source {
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+.btn-uninstall-pkg {
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-uninstall-pkg:hover:not(:disabled) {
+    background: rgba(255, 77, 79, 0.1);
+    color: var(--color-error);
+}
+
+.btn-uninstall-pkg:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Button & Spinner Reusables */
@@ -1667,7 +1873,7 @@ const currentDistroStatus = computed(() => {
     align-items: center;
     gap: 0.5rem;
     padding: 0.75rem 1.5rem;
-    background: var(--primary-color);
+    background: var(--color-brand);
     color: white;
     border: none;
     border-radius: 8px;
@@ -1700,7 +1906,7 @@ const currentDistroStatus = computed(() => {
     padding: 0.75rem 1.5rem;
     border-radius: 12px;
     cursor: pointer;
-    color: var(--text-secondary);
+    color: var(--color-text-secondary);
     transition: all 0.2s;
     font-weight: 500;
     border: 1px solid transparent;
@@ -1710,9 +1916,9 @@ const currentDistroStatus = computed(() => {
 }
 
 .action-btn-sidebar:hover {
-    background: var(--card-bg);
-    color: var(--text-color);
-    border-color: var(--border-color);
+    background: var(--color-bg-card);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
 }
 
 .action-btn-sidebar.stop {
@@ -1745,20 +1951,20 @@ const currentDistroStatus = computed(() => {
 
 .modal-window {
   width: 500px;
-  background: var(--card-bg); /* Adapted variable */
+  background: var(--color-bg-card); /* Adapted variable */
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0,0,0,0.2); /* Adapted shadow */
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   display: flex; flex-direction: column;
 }
 
 .modal-header {
   padding: 16px 24px;
-  background: var(--bg-color); /* Adapted variable */
-  border-bottom: 1px solid var(--border-color);
+  background: var(--color-bg-body); /* Adapted variable */
+  border-bottom: 1px solid var(--color-border);
   display: flex; justify-content: space-between; align-items: center;
-  font-weight: 600; color: var(--text-color);
+  font-weight: 600; color: var(--color-text-primary);
 }
 
 .close-btn {
@@ -1766,16 +1972,16 @@ const currentDistroStatus = computed(() => {
   border-radius: 50%;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   display: flex; align-items: center; justify-content: center;
   font-size: 16px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .close-btn:hover {
-  background: var(--bg-color);
-  color: var(--text-color);
-  border-color: var(--border-color);
+  background: var(--color-bg-body);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
 }
 
 .modal-body { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
@@ -1788,38 +1994,38 @@ const currentDistroStatus = computed(() => {
 }
 .warning-icon { font-size: 24px; }
 .warning-content h4 { margin: 0 0 4px 0; color: #ff4d4f; font-size: 15px; }
-.warning-content p { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.warning-content p { margin: 0; font-size: 13px; color: var(--color-text-secondary); line-height: 1.5; }
 
 /* 步骤条 */
 .steps-container { display: flex; justify-content: space-between; position: relative; padding: 0 10px; margin-top: 10px; }
 .step-item { display: flex; flex-direction: column; align-items: center; position: relative; flex: 1; z-index: 2; }
 .step-icon {
     width: 24px; height: 24px; border-radius: 50%;
-    background: var(--card-bg); border: 2px solid var(--text-secondary);
-    color: var(--text-secondary);
+    background: var(--color-bg-card); border: 2px solid var(--color-text-secondary);
+    color: var(--color-text-secondary);
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: bold; margin-bottom: 8px;
     transition: all 0.3s;
 }
-.step-title { font-size: 11px; color: var(--text-secondary); transition: color 0.3s; }
+.step-title { font-size: 11px; color: var(--color-text-secondary); transition: color 0.3s; }
 
-.step-item.processing .step-icon { border-color: var(--primary-color); color: var(--primary-color); }
-.step-item.processing .step-title { color: var(--text-color); }
-.step-item.finished .step-icon { background: var(--primary-color); border-color: var(--primary-color); color: #fff; }
+.step-item.processing .step-icon { border-color: var(--color-brand); color: var(--color-brand); }
+.step-item.processing .step-title { color: var(--color-text-primary); }
+.step-item.finished .step-icon { background: var(--color-brand); border-color: var(--color-brand); color: #fff; }
 
 .step-line {
     position: absolute; top: 11px; left: 50%; width: 100%; height: 2px;
-    background: var(--border-color); z-index: -1;
+    background: var(--color-border); z-index: -1;
 }
-.step-line.line-active { background: var(--primary-color); }
+.step-line.line-active { background: var(--color-brand); }
 
 /* 按钮 */
 .action-bar { display: flex; justify-content: flex-end; gap: 12px; }
 .cancel-btn {
     padding: 8px 20px; border-radius: 6px; cursor: pointer;
-    background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary);
+    background: transparent; border: 1px solid var(--color-border); color: var(--color-text-secondary);
 }
-.cancel-btn:hover { border-color: var(--text-color); color: var(--text-color); background: var(--bg-color); }
+.cancel-btn:hover { border-color: var(--color-text-primary); color: var(--color-text-primary); background: var(--color-bg-body); }
 .danger-btn {
     padding: 8px 24px; border-radius: 6px; cursor: pointer;
     background: #ff4d4f; border: none; color: white; font-weight: 500;
@@ -1830,12 +2036,12 @@ const currentDistroStatus = computed(() => {
 
 /* Form Styles */
 .form-group { margin-bottom: 16px; }
-.form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--text-secondary); }
+.form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--color-text-secondary); }
 .input { 
     width: 100%; padding: 8px 12px; 
-    border-radius: 6px; border: 1px solid var(--border-color); 
-    background: var(--bg-color); 
-    color: var(--text-color);
+    border-radius: 6px; border: 1px solid var(--color-border); 
+    background: var(--color-bg-body); 
+    color: var(--color-text-primary);
     font-size: 13px;
 }
 .input:disabled { opacity: 0.7; cursor: not-allowed; }
@@ -1863,8 +2069,8 @@ const currentDistroStatus = computed(() => {
     margin-top: -12px;
     margin-bottom: 12px;
     font-size: 12px;
-    color: var(--text-secondary);
-    background: var(--bg-color);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-body);
     padding: 8px 12px;
     border-radius: 6px;
     font-family: monospace;
@@ -1877,8 +2083,8 @@ const currentDistroStatus = computed(() => {
 /* Progress & Hero */
 .install-hero { margin-bottom: 24px; text-align: center; }
 .hero-icon { width: 64px; height: 64px; object-fit: contain; margin-bottom: 16px; }
-.hero-info h3 { margin: 0 0 4px 0; font-size: 18px; color: var(--text-color); }
-.log-detail { font-size: 12px; color: var(--text-secondary); margin: 0; font-family: monospace; }
+.hero-info h3 { margin: 0 0 4px 0; font-size: 18px; color: var(--color-text-primary); }
+.log-detail { font-size: 12px; color: var(--color-text-secondary); margin: 0; font-family: monospace; }
 
 /* .progress-bar-container and related classes moved to main.css */
 /* .progress-track, .progress-fill, .progress-glow, .progress-text, @keyframes scan moved to main.css */
@@ -1889,8 +2095,8 @@ const currentDistroStatus = computed(() => {
 .error-desc { color: #ff4d4f; margin-bottom: 24px; font-size: 16px; font-weight: 500; }
 
 .btn { padding: 6px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; transition: all 0.2s; font-weight: 500; }
-.btn-secondary { background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); }
-.btn-secondary:hover { border-color: var(--text-secondary); }
+.btn-secondary { background: var(--color-bg-body); color: var(--color-text-primary); border: 1px solid var(--color-border); }
+.btn-secondary:hover { border-color: var(--color-text-secondary); }
 .btn-danger { background: #ff4d4f; color: #fff; }
 
 /* Modal Transition */

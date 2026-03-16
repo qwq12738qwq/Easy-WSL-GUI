@@ -3,14 +3,36 @@ package main
 import (
 	start "Golang-WSL-GUI/src/Start"
 	"embed"
+	"encoding/json"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
-//go:embed all:frontend/dist
 var assets embed.FS
+
+// 导入项目中wails.json文件成字节
+//
+//go:embed wails.json
+var wailsConfigData []byte
+
+// 应用名称全局变量
+var AppName string
+
+// 读取 wails.json 里的 name 字段
+func GetAppName() string {
+	var config struct {
+		Name string `json:"name"`
+	}
+
+	err := json.Unmarshal(wailsConfigData, &config)
+	if err != nil || config.Name == "" {
+		return ""
+	}
+
+	return config.Name
+}
 
 func main() {
 	// Create an instance of the app structure

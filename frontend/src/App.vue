@@ -7,10 +7,11 @@ import StartupChecks from './components/StartupChecks.vue'
 import PerformanceConfig from './components/PerformanceConfig.vue'
 import ConfigView from './components/ConfigView.vue'
 import EnvironmentView from './components/EnvironmentView.vue'
+import LogView from './components/LogView.vue'
 import { initTheme } from './utils/theme'
 import { GetAppVersion } from './wailsjs/go/main/App'
 import { EventsOn, BrowserOpenURL } from './wailsjs/runtime/runtime'
-import { Home, Download, Settings, Tag, X, Info, Cpu, Sliders, LayoutGrid, Github } from 'lucide-vue-next'
+import { Home, Download, Settings, Tag, X, Info, Cpu, Sliders, LayoutGrid, Github, FileText } from 'lucide-vue-next'
 import { useAppStore } from './stores/app'
 
 // 初始化主题 (修复 1.1 - 1.3)
@@ -28,6 +29,7 @@ const views = {
   performance: PerformanceConfig, // 注册为独立视图
   config: ConfigView,
   environment: EnvironmentView,
+  logs: LogView, // 添加日志视图
   setting: SettingView
 }
 
@@ -175,6 +177,16 @@ onMounted(async () => {
         >
           <Settings class="menu-icon" :size="20" />
           <span class="menu-text">设置</span>
+        </div>
+
+        <!-- Logs Entry -->
+        <div 
+          :class="['menu-item', { active: appStore.currentTab === 'logs' }]" 
+          @click="appStore.setCurrentTab('logs')"
+          style="margin-top: auto;"
+        >
+          <FileText class="menu-icon" :size="20" />
+          <span class="menu-text">日志</span>
         </div>
       </nav>
 
