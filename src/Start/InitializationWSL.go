@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"unsafe"
 
+	"Golang-WSL-GUI/src/Global"
+
 	"golang.org/x/sys/windows"
 )
 
@@ -46,7 +48,13 @@ func CheckAdmin() error {
 	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}
 	err := cmd.Run()
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("CheckAdmin: 当前非管理员权限")
+		}
 		return err
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("CheckAdmin: 管理员权限验证通过")
 	}
 	return nil
 }
@@ -55,12 +63,21 @@ func CheckAdmin() error {
 func DetectWSL() error {
 	_, err := exec.LookPath("wsl.exe")
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("DetectWSL: 未找到wsl.exe: %s", err.Error())
+		}
 		return fmt.Errorf("wsl.exe not found")
 	}
 	cmd := exec.Command("wsl.exe", "--status")
 	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}
 	if err := cmd.Run(); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("DetectWSL: WSL功能未启用: %s", err.Error())
+		}
 		return fmt.Errorf("wsl exists but not enabled")
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("DetectWSL: WSL功能检测正常")
 	}
 	return nil
 }

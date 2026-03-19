@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	global "Golang-WSL-GUI/src/Global"
 	setting "Golang-WSL-GUI/src/Setting"
 	"Golang-WSL-GUI/src/installWSL"
 
@@ -51,12 +52,21 @@ var List_Slice []*List
 func GetWSLallStatus() ([]*List, error) {
 	currentList, err := WSLsrtatus()
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("GetWSLallStatus: 获取WSL状态失败: %s", err.Error())
+		}
 		return nil, err
 	}
 	List_Slice = currentList
 	if len(List_Slice) == 0 {
 		// 这里可以选择返回空切片而不是报错，让前端显示"暂无数据"
+		if global.AppLogger != nil {
+			global.AppLogger.Info("GetWSLallStatus: 未发现已安装的WSL发行版")
+		}
 		return []*List{}, nil
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetWSLallStatus: 成功获取 %d 个WSL发行版", len(List_Slice))
 	}
 	return List_Slice, nil
 }
@@ -67,6 +77,9 @@ func WSLsrtatus() ([]*List, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.Output()
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSLsrtatus: 执行wsl命令失败: %s", err.Error())
+		}
 		return nil, err
 	}
 
@@ -99,8 +112,15 @@ func WSLsrtatus() ([]*List, error) {
 
 // GetMetrics 返回单个发行版的详细数据
 func GetMetrics_Runtime(Info installWSL.WSLinfo) (*Metrics, error) {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetMetrics: 正在获取发行版 %s 的运行指标", Info.Linux_Version)
+	}
 	memtotal := setting.Rading_PerformanceConfig()
 	diskptr := getFileSize(Info)
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetMetrics: 发行版 %s CPU: %.1f%%, 内存: %.1fGB/%dGB, 磁盘: %d/%d bytes",
+			Info.Linux_Version, GetCpuUsageSingleShot(Info), GetDistroMemUsage(Info), memtotal.MemoryLimit, diskptr.Used, diskptr.Total)
+	}
 	return &Metrics{
 		CPU:        fmt.Sprintf(`%.1f%%`, GetCpuUsageSingleShot(Info)),
 		MemUsed:    fmt.Sprintf(`%.1fGB`, GetDistroMemUsage(Info)),

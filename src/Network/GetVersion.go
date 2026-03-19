@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	global "Golang-WSL-GUI/src/Global"
 )
 
 type DistroVersion struct {
@@ -29,6 +31,9 @@ type DistroItem struct {
 var json_url string = "https://gitee.com/MrLi114514/wsl_package/raw/master/Package/DistributionInfo.json"
 
 func GetDistroList() ([]DistroItem, error) {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetDistroList: 正在从远程获取发行版列表")
+	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	// 5次重试
@@ -37,6 +42,9 @@ func GetDistroList() ([]DistroItem, error) {
 		// 构造请求
 		req, err := http.NewRequest("GET", json_url, nil)
 		if err != nil {
+			if global.AppLogger != nil {
+				global.AppLogger.Error("GetDistroList: 创建请求失败: %s", err.Error())
+			}
 			return nil, err
 		}
 		// if token != "" {
@@ -54,20 +62,35 @@ func GetDistroList() ([]DistroItem, error) {
 		if resp.StatusCode == http.StatusOK {
 			var distros []DistroItem
 			if err := json.NewDecoder(resp.Body).Decode(&distros); err != nil {
+				if global.AppLogger != nil {
+					global.AppLogger.Error("GetDistroList: 解析JSON失败: %s", err.Error())
+				}
 				return nil, err
+			}
+			if global.AppLogger != nil {
+				global.AppLogger.Info("GetDistroList: 成功获取 %d 个发行版", len(distros))
 			}
 			return distros, nil
 		}
 
 		// 404直接跳出
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429 {
+			if global.AppLogger != nil {
+				global.AppLogger.Error("GetDistroList: HTTP错误,状态码: %d", resp.StatusCode)
+			}
 			break
 		}
 
 		// 等待一段时间再重试 (指数退避)
 		waitTime := time.Duration(1<<i) * time.Second
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("GetDistroList: 获取失败,状态码: %d, %d秒后重试", resp.StatusCode, waitTime)
+		}
 		time.Sleep(waitTime)
 	}
 
+	if global.AppLogger != nil {
+		global.AppLogger.Error("GetDistroList: 获取发行版列表失败,已重试%d次", maxRetries)
+	}
 	return nil, errors.New("未知错误")
 }

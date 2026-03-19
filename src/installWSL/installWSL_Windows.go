@@ -4,6 +4,7 @@
 package installWSL
 
 import (
+	global "Golang-WSL-GUI/src/Global"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -255,6 +256,11 @@ func Start_cmd(Info WSLinfo, action string) ([]byte, error) {
 
 	err := cmd.Run()
 
+	// 全局日志处理
+	if err != nil {
+		global.AppLogger.Error("执行命令 %s 出错,详细报错: %s", action, err.Error())
+	}
+
 	return rawBuf.Bytes(), err
 }
 
@@ -278,15 +284,28 @@ func FilePath_string(Info WSLinfo) string {
 
 // 多线程下载+重试
 func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Downloader: 开始下载发行版 %s", Info.Linux_Version)
+	}
 
 	line, err := Start_cmd(Info, "Check")
 	if err != nil {
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("在检查步骤出错,出错代码: %s", err))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: 检查发行版状态失败: %s", err.Error())
+		}
+
 	}
 	if runcode := parseWSLMessage(ctx, Reduce_Unicode(line), Info); runcode == 2 {
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("WSL2_Downloader: 发行版 %s 已存在", Info.Linux_Version)
+		}
 		return errors.New("发行版已存在")
 	} else if runcode == 3 {
 		runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("%s 发行版已安装,开始配置用户", Info.Linux_Version))
+		if global.AppLogger != nil {
+			global.AppLogger.Info("WSL2_Downloader: 发行版 %s 已安装但未配置用户", Info.Linux_Version)
+		}
 		return errors.New("发行版存在,但未配置默认用户")
 	}
 
@@ -295,6 +314,9 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	// 创建目标目录
 	if os.MkdirAll(filepath.Dir(fullpath), 0755) != nil {
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("在路径 %s 创建安装文件失败", fullpath))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: 创建目录失败: %s", fullpath)
+		}
 		return errors.New("创建文件失败")
 	}
 
@@ -302,11 +324,17 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	resp, err := http.Get(Info.DownloadInfo.URL)
 	if err != nil {
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("下载 %s 发行版失败,请检查网络连接", Info.Linux_Version))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: 下载发行版 %s 失败,请检查网络连接: %s", Info.Linux_Version, err.Error())
+		}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("下载失败,网络错误码: %s ", strconv.Itoa(resp.StatusCode)))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: HTTP错误,状态码: %d", resp.StatusCode)
+		}
 		return errors.New("网络错误")
 	}
 
@@ -315,6 +343,9 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	out, err := os.Create(fullpath)
 	if err != nil {
 		runtime.EventsEmit(ctx, "wsl-error", "创建本地文件失败")
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: 创建本地文件失败: %s", err.Error())
+		}
 		return err
 	}
 	defer out.Close()
@@ -325,6 +356,9 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	// 并行下载(分片 Range 请求) + 重试3次，失败取消下载
 	if totalSize <= 0 {
 		runtime.EventsEmit(ctx, "wsl-error", "无法获取镜像大小，取消下载")
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: 无法获取镜像大小")
+		}
 		return errors.New("未知长度")
 	}
 
@@ -335,6 +369,9 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 
 	if err := out.Truncate(totalSize); err != nil {
 		runtime.EventsEmit(ctx, "wsl-error", "预分配文件空间失败")
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: 预分配文件空间失败: %s", err.Error())
+		}
 		return err
 	}
 
@@ -449,6 +486,9 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	case e := <-errCh:
 		os.Remove(fullpath)
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("下载失败并已取消: %s", e))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: 下载失败并已取消: %s", e.Error())
+		}
 		return e
 	default:
 	}
@@ -458,17 +498,26 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 	if _, err := out.Seek(0, 0); err == nil {
 		if _, err := io.Copy(hasher, out); err != nil {
 			runtime.EventsEmit(ctx, "wsl-error", "计算哈希失败")
+			if global.AppLogger != nil {
+				global.AppLogger.Error("WSL2_Downloader: 计算哈希失败: %s", err.Error())
+			}
 			return err
 		}
 	} else {
 		f, ferr := os.Open(fullpath)
 		if ferr != nil {
 			runtime.EventsEmit(ctx, "wsl-error", "打开文件计算哈希失败")
+			if global.AppLogger != nil {
+				global.AppLogger.Error("WSL2_Downloader: 打开文件计算哈希失败: %s", ferr.Error())
+			}
 			return ferr
 		}
 		defer f.Close()
 		if _, err := io.Copy(hasher, f); err != nil {
 			runtime.EventsEmit(ctx, "wsl-error", "计算哈希失败")
+			if global.AppLogger != nil {
+				global.AppLogger.Error("WSL2_Downloader: 计算哈希失败: %s", err.Error())
+			}
 			return err
 		}
 	}
@@ -480,10 +529,16 @@ func WSL2_Downloader(ctx context.Context, Info WSLinfo) error {
 		// 如果校验失败，删除残缺文件
 		os.Remove(fullpath)
 		runtime.EventsEmit(ctx, "wsl-error", "Sha256校验失败,请重新执行")
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Downloader: Sha256校验失败, 期望: %s, 实际: %s", Info.DownloadInfo.Sha256, actualSha256)
+		}
 		return errors.New("Sha256校验失败")
 	}
 
 	runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("下载完成,准备安装 %s", Info.Linux_Version))
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Downloader: 发行版 %s 下载完成,准备安装", Info.Linux_Version)
+	}
 
 	return nil
 }
@@ -494,23 +549,38 @@ func parseWSLMessage(ctx context.Context, l string, Info WSLinfo) int {
 	switch {
 	case strings.Contains(l, "requireselevation"):
 		runtime.EventsEmit(ctx, "wsl-error", "需要权限执行WSL安装命令,检查是否给予权限")
+		if global.AppLogger != nil {
+			global.AppLogger.Error("parseWSLMessage: 需要管理员权限执行WSL安装命令")
+		}
 		return 1
 	case strings.Contains(l, ToL_Version):
 		line, _ := Start_cmd(Info, "SeachUser")
 		if strings.Contains(Reduce_Unicode(line), "default") {
 			runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("该发行版 %s 已经安装在Windows上", Info.Linux_Version))
+			if global.AppLogger != nil {
+				global.AppLogger.Warning("parseWSLMessage: 发行版 %s 已经安装", Info.Linux_Version)
+			}
 			return 2
 		} else {
 			return 3
 		}
 	case strings.Contains(l, "invalid"):
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("用户名 %s 不符合规范,请重新设置", Info.Auth.User))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("parseWSLMessage: 用户名 %s 不符合规范", Info.Auth.User)
+		}
 		return 4
 	case strings.Contains(l, "short"):
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 设置太短", Info.Auth.Password))
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("parseWSLMessage: 密码设置太短")
+		}
 		return 5
 	case strings.Contains(l, "dictionary"):
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("密码 %s 不符合字典规范,请重新设置", Info.Auth.Password))
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("parseWSLMessage: 密码不符合字典规范")
+		}
 		return 6
 	default:
 		return -1
@@ -520,16 +590,28 @@ func parseWSLMessage(ctx context.Context, l string, Info WSLinfo) int {
 
 func WSL2_Installer(ctx context.Context, Info WSLinfo) error {
 	runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("正在解压安装发行版 %s ", Info.Linux_Version))
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Installer: 正在解压安装发行版 %s", Info.Linux_Version)
+	}
 	time.Sleep(2 * time.Second)
 	line, err := Start_cmd(Info, "Import")
 
 	if err != nil {
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("解压安装出现错误: %s ,报错信息: %s", err.Error(), Reduce_Unicode(line)))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Installer: 解压安装发行版 %s 失败: %s", Info.Linux_Version, err.Error())
+		}
 		return err
 	}
 	runtime.EventsEmit(ctx, "wsl-output", fmt.Sprintf("安装发行版 %s 完成", Info.Linux_Version))
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Installer: 发行版 %s 安装完成", Info.Linux_Version)
+	}
 	time.Sleep(2 * time.Second)
 	runtime.EventsEmit(ctx, "wsl-output", "正在删除下载残留......")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Installer: 正在删除下载残留文件")
+	}
 	os.Remove(FilePath_string(Info))
 	time.Sleep(2 * time.Second)
 	return nil
@@ -539,47 +621,78 @@ func WSL2_Installer(ctx context.Context, Info WSLinfo) error {
 // 配置用户名,密码函数
 func WSL2_Setting_User(ctx context.Context, Info WSLinfo) error {
 	runtime.EventsEmit(ctx, "wsl-output", "正在配置用户......")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Setting_User: 正在创建用户 %s", Info.Auth.User)
+	}
 	line, _ := Start_cmd(Info, "ConfigUser")
 	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
 		time.Sleep(2 * time.Second)
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Setting_User: 用户名 %s 配置错误", Info.Auth.User)
+		}
 		return errors.New("用户名配置错误")
 	}
 	time.Sleep(2 * time.Second)
 	runtime.EventsEmit(ctx, "wsl-output", "正在配置密码......")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Setting_User: 正在配置用户密码")
+	}
 	line, _ = Start_cmd(Info, "ConfigPasswd")
 
 	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
 		time.Sleep(2 * time.Second)
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Setting_User: 密码配置错误")
+		}
 		return errors.New("密码配置错误")
 	}
 	time.Sleep(2 * time.Second)
 	runtime.EventsEmit(ctx, "wsl-output", "正在配置权限......")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Setting_User: 正在配置sudo权限")
+	}
 	line, _ = Start_cmd(Info, "ConfigSudo")
 
 	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
 		time.Sleep(2 * time.Second)
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Setting_User: 无法配置用户Sudo权限")
+		}
 		return errors.New("无法配置用户Sudo权限")
 	}
 	time.Sleep(2 * time.Second)
 	runtime.EventsEmit(ctx, "wsl-output", "正在设置默认账户......")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Setting_User: 正在设置默认账户 %s", Info.Auth.User)
+	}
 	line, _ = Start_cmd(Info, "Default")
 
 	if parseWSLMessage(ctx, Reduce_Unicode(line), Info) != -1 {
 		time.Sleep(2 * time.Second)
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Setting_User: 无法配置默认用户")
+		}
 		return errors.New("无法配置默认用户")
 	}
 	time.Sleep(2 * time.Second)
 	line, err := Start_cmd(Info, "Stop")
 	if err != nil {
 		runtime.EventsEmit(ctx, "wsl-error", fmt.Sprintf("暂停发行版出现错误: %s ", err))
+		if global.AppLogger != nil {
+			global.AppLogger.Error("WSL2_Setting_User: 暂停发行版出现错误: %s", err.Error())
+		}
 	}
 
+	if global.AppLogger != nil {
+		global.AppLogger.Info("WSL2_Setting_User: 用户配置完成")
+	}
 	return nil
 }
 
 // 迁移发行版
 func MovingPathWSL(ctx context.Context, Info WSLinfo) error {
 	runtime.EventsEmit(ctx, "migration:progress", "正在导出发行版......")
+	global.AppLogger.Info("MovingPathWSL: 正在导出发行版 %s", Info.Linux_Version)
 	// 导出
 	line, err := Start_cmd(Info, "Export")
 	if err != nil {
@@ -587,30 +700,35 @@ func MovingPathWSL(ctx context.Context, Info WSLinfo) error {
 			"status": "failed",
 			"error":  fmt.Sprintf("导出出现问题: %s", Reduce_Unicode(line)),
 		})
+		global.AppLogger.Error("MovingPathWSL: 导出发行版 %s 出现问题: %s", Info.Linux_Version, err.Error())
 		os.Remove(FilePath_string(Info))
 		return err
 	}
 	time.Sleep(2 * time.Second)
 	// 卸载
 	runtime.EventsEmit(ctx, "migration:progress", "正在卸载发行版......")
+	global.AppLogger.Info("MovingPathWSL: 正在卸载发行版 %s", Info.Linux_Version)
 	line, err = Start_cmd(Info, "Uninstall")
 	if err != nil {
 		runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
 			"status": "failed",
 			"error":  fmt.Sprintf("卸载出现问题: %s", Reduce_Unicode(line)),
 		})
+		global.AppLogger.Error("MovingPathWSL: 卸载发行版 %s 出现问题: %s", Info.Linux_Version, err.Error())
 		os.Remove(FilePath_string(Info))
 		return err
 	}
 	time.Sleep(2 * time.Second)
 	//导入
 	runtime.EventsEmit(ctx, "migration:progress", "正在迁移发行版......")
+	global.AppLogger.Info("MovingPathWSL: 正在导入发行版 %s 到新路径 %s", Info.Linux_Version, Info.Install_Path.Path)
 	line, err = Start_cmd(Info, "Import")
 	if err != nil {
 		runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
 			"status": "failed",
 			"error":  fmt.Sprintf("导入出现问题: %s", Reduce_Unicode(line)),
 		})
+		global.AppLogger.Error("MovingPathWSL: 导入发行版 %s 出现问题: %s", Info.Linux_Version, err.Error())
 		os.Remove(FilePath_string(Info))
 		return err
 	}
@@ -619,30 +737,43 @@ func MovingPathWSL(ctx context.Context, Info WSLinfo) error {
 	time.Sleep(10 * time.Second)
 	// 配置用户
 	runtime.EventsEmit(ctx, "migration:progress", "正在还原用户配置......")
+	global.AppLogger.Info("MovingPathWSL: 正在还原用户配置")
 	line, err = Start_cmd(Info, "Default")
 	if err != nil {
 		runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
 			"status": "failed",
 			"error":  fmt.Sprintf("设置账户出现问题: %s", Reduce_Unicode(line)),
 		})
+		global.AppLogger.Error("MovingPathWSL: 设置默认账户失败: %s", err.Error())
 		return err
 	}
 	runtime.EventsEmit(ctx, "migration:progress", "删除迁移残留......")
-	os.Remove(FilePath_string(Info))
+	global.AppLogger.Info("MovingPathWSL: 正在删除迁移残留")
+	path := FilePath_string(Info)
+	global.AppLogger.Info("MovingPathWSL: 删除残留,残留文件路径: %s ", path)
+	os.Remove(path)
 	time.Sleep(3 * time.Second)
 	Start_cmd(Info, "Stop")
 	// 发送完成信息
 	runtime.EventsEmit(ctx, "migration:done", map[string]interface{}{
 		"status": "success",
 	})
+	global.AppLogger.Info("MovingPathWSL: 发行版 %s 迁移成功", Info.Linux_Version)
 	return nil
 }
 
 func UninstallWSL(ctx context.Context, Info WSLinfo) error {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("UninstallWSL: 开始卸载发行版 %s", Info.Linux_Version)
+	}
 	line, err := Start_cmd(Info, "Uninstall")
 	if err != nil {
 		runtime.EventsEmit(ctx, "uninstall:failed", fmt.Sprintf("卸载 %s 发行版失败: %s", Info.Linux_Version, Reduce_Unicode(line)))
+		global.AppLogger.Error("UninstallWSL: 卸载 %s 发行版失败: %s", Info.Linux_Version, Reduce_Unicode(line))
 		return err
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("UninstallWSL: 发行版 %s 卸载成功", Info.Linux_Version)
 	}
 	return nil
 	// cmd, _ := Init_Admin_PowerShell(name, "Uninstall")

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	global "Golang-WSL-GUI/src/Global"
 )
 
 // UpdateInfo 对应 version.json 的结构
@@ -24,36 +26,58 @@ type UpdateInfo struct {
 // CheckForUpdate 检查更新
 // jsonUrl: 远程 version.json 的地址
 func CheckForUpdate(currentVersion string, jsonUrl string) (*UpdateInfo, error) {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("CheckForUpdate: 正在检查更新,当前版本: %s", currentVersion)
+	}
+
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
 
 	resp, err := client.Get(jsonUrl)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("CheckForUpdate: 请求更新信息失败: %s", err.Error())
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("CheckForUpdate: HTTP错误,状态码: %d", resp.StatusCode)
+		}
 		return nil, fmt.Errorf("request failed with status code: %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("CheckForUpdate: 读取响应失败: %s", err.Error())
+		}
 		return nil, err
 	}
 
 	var remoteInfo UpdateInfo
 	err = json.Unmarshal(body, &remoteInfo)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("CheckForUpdate: 解析JSON失败: %s", err.Error())
+		}
 		return nil, err
 	}
 
 	// 如果远程版本大于当前版本，返回更新信息
 	if compareVersion(remoteInfo.Version, currentVersion) > 0 {
+		if global.AppLogger != nil {
+			global.AppLogger.Info("CheckForUpdate: 发现新版本 %s", remoteInfo.Version)
+		}
 		return &remoteInfo, nil
 	}
 
+	if global.AppLogger != nil {
+		global.AppLogger.Info("CheckForUpdate: 当前已是最新版本 %s", currentVersion)
+	}
 	return nil, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	global "Golang-WSL-GUI/src/Global"
 	"Golang-WSL-GUI/src/Logger"
 	networkGUI "Golang-WSL-GUI/src/Network"
 	setting "Golang-WSL-GUI/src/Setting"
@@ -45,8 +46,7 @@ type UpdateInfo struct {
 }
 
 type App struct {
-	ctx       context.Context
-	appLogger *Logger.Logger
+	ctx context.Context
 }
 
 var WSL_Regedit_Info = map[string]runtimeGUI.Regedit_WSL{}
@@ -60,6 +60,7 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	//	待测试
 	// 日志线程系统
 	go func() {
 		appLogger, err := Logger.NewLogger()
@@ -67,12 +68,13 @@ func (a *App) startup(ctx context.Context) {
 			// 日志函数运行失败时,防止主程序崩溃
 			appLogger = nil
 		} else {
-			a.appLogger = appLogger
+			global.AppLogger = appLogger
 			// 启动日志推送服务
 			a.PushLogsToFrontend()
-			a.appLogger.Info("日志系统启动成功")
+			global.AppLogger.Info("日志系统启动成功")
 		}
 	}()
+	//	待测试
 
 	// 延迟启动更新检测线程
 	go func() {
@@ -108,6 +110,9 @@ func (a *App) Install_Bottom(
 	downloadUrl string,
 	sha256 string,
 ) string {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("开始安装 %s 发行版,用户: %s, 版本: %s", ver, user, ver)
+	}
 	if path == "" {
 		path = fmt.Sprintf(`C:\Users\%s\AppData\Local\Packages`, os.Getenv("USERNAME"))
 	}
@@ -120,6 +125,9 @@ func (a *App) Install_Bottom(
 		DownloadInfo:    &installWSL.Download_WSL{URL: downloadUrl, Sha256: sha256},
 	}
 	if err := installWSL.WSL2_Downloader(a.ctx, Info); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("Install_Bottom: 下载 %s 发行版失败: %s", ver, err.Error())
+		}
 		if err.Error() == "发行版存在,但未配置默认用户" {
 			if installWSL.WSL2_Setting_User(a.ctx, Info) != nil {
 				return err.Error()
@@ -131,18 +139,33 @@ func (a *App) Install_Bottom(
 	}
 	time.Sleep(2 * time.Second)
 	if err := installWSL.WSL2_Installer(a.ctx, Info); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("Install_Bottom: 安装 %s 发行版失败: %s", ver, err.Error())
+		}
 		return err.Error()
 	}
 	if err := installWSL.WSL2_Setting_User(a.ctx, Info); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("Install_Bottom: 配置 %s 发行版用户失败: %s", ver, err.Error())
+		}
 		return err.Error()
 	}
 
 	runtime.EventsEmit(a.ctx, "wsl-output", fmt.Sprintf("正在重启 %s 发行版", Info.Linux_Version))
+	if global.AppLogger != nil {
+		global.AppLogger.Info("Install_Bottom: 正在重启 %s 发行版", Info.Linux_Version)
+	}
 	if a.StopDistro(name) != nil {
 		runtime.EventsEmit(a.ctx, "wsl-output", fmt.Sprintf("重启 %s 发行版出错,请手动重启发行版完成安装", Info.Linux_Version))
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("Install_Bottom: 重启 %s 发行版出错,请手动重启", Info.Linux_Version)
+		}
 		time.Sleep(5 * time.Second)
 	}
 	runtime.EventsEmit(a.ctx, "wsl-output", "success")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("Install_Bottom: %s 发行版安装成功", Info.Linux_Version)
+	}
 	return "success"
 }
 
@@ -150,7 +173,13 @@ func (a *App) Install_Bottom(
 func (a *App) GetDistroStats() ([]*runtimeGUI.List, error) {
 	Info, err := runtimeGUI.GetWSLallStatus()
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("GetDistroStats: 获取WSL发行版列表失败: %s", err.Error())
+		}
 		return nil, err
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetDistroStats: 成功获取 %d 个发行版", len(Info))
 	}
 	return Info, nil
 }
@@ -159,9 +188,15 @@ func (a *App) GetDistroStats() ([]*runtimeGUI.List, error) {
 func (a *App) GetPath(name string) (string, error) {
 	infoptr, err := runtimeGUI.Seach_WSL_Regedit_Info(name)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("GetPath: 获取发行版 %s 路径失败: %s", name, err.Error())
+		}
 		return err.Error(), err
 	}
 	WSL_Regedit_Info[name] = *infoptr
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetPath: 成功获取发行版 %s 安装路径: %s", name, WSL_Regedit_Info[name].BasePath)
+	}
 	return WSL_Regedit_Info[name].BasePath, nil
 }
 
@@ -172,6 +207,9 @@ func (a *App) GetMetrics(name string) runtimeGUI.Metrics {
 	}
 	ptr, err := runtimeGUI.GetMetrics_Runtime(Info)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("GetMetrics: 获取发行版 %s 运行信息失败: %s", name, err.Error())
+		}
 		return runtimeGUI.Metrics{}
 	}
 	return *ptr
@@ -179,19 +217,31 @@ func (a *App) GetMetrics(name string) runtimeGUI.Metrics {
 
 // UninstallDistro 卸载发行版
 func (a *App) UninstallDistro(name string) error {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("UninstallDistro: 开始卸载发行版 %s", name)
+	}
 	Info := installWSL.WSLinfo{
 		Linux_Version: name,
 	}
 
 	runtime.EventsEmit(a.ctx, "uninstall:progress", fmt.Sprintf("正在停止 %s 发行版", Info.Linux_Version))
 	if err := a.StopDistro(name); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("UninstallDistro: 停止发行版 %s 失败: %s", name, err.Error())
+		}
 		return err
 	}
 	runtime.EventsEmit(a.ctx, "uninstall:progress", fmt.Sprintf("开始卸载 %s 发行版", Info.Linux_Version))
 	if err := installWSL.UninstallWSL(a.ctx, Info); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("UninstallDistro: 卸载发行版 %s 失败: %s", name, err.Error())
+		}
 		return err
 	}
 	runtime.EventsEmit(a.ctx, "uninstall:progress", "success")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("UninstallDistro: 发行版 %s 卸载成功", name)
+	}
 	return nil
 }
 
@@ -208,13 +258,23 @@ func (a *App) CheckAdmin() bool {
 func (a *App) CheckWSL() bool {
 	if run.GOOS == "windows" {
 		err := start.DetectWSL()
-		return err == nil
+		if err != nil {
+			if global.AppLogger != nil {
+				global.AppLogger.Warning("CheckWSL: WSL功能检测失败: %s", err.Error())
+			}
+			return false
+		}
+		if global.AppLogger != nil {
+			global.AppLogger.Info("CheckWSL: WSL功能检测正常")
+		}
+		return true
 	}
 	return false
 }
 
 // 迁移WSL系统函数
 func (a *App) StartMigration(option MigrationOptions) error {
+	global.AppLogger.Info("StartMigration: 启动迁移发行版 %s, 从 %s 迁移到 %s", option.DistroName, option.SourcePath, option.TargetPath)
 	Info := installWSL.WSLinfo{
 		Linux_Version: option.DistroName,
 		Install_Path:  &installWSL.WSLpath{Path: option.TargetPath},
@@ -222,20 +282,25 @@ func (a *App) StartMigration(option MigrationOptions) error {
 	// 先读取默认用户配置
 	// 预防先操作系统出现问题
 	runtime.EventsEmit(a.ctx, "migration:progress", "保存用户配置中......")
+	global.AppLogger.Info("StartMigration: 正在保存用户配置")
 	time.Sleep(2 * time.Second)
 	var user_cache string
 	user, err := runtimeGUI.GetDefaultUser(Info)
 	if err != nil {
+		global.AppLogger.Warning("StartMigration: 在wsl.conf中找不到默认用户,将寻找发行版内部用户组")
 		runtime.EventsEmit(a.ctx, "migration:progress", "在wsl.conf中找不到默认用户,将寻找发行版内部用户组")
 		time.Sleep(2 * time.Second)
+		// 获取WSL发行版内部用户,迁移系统时选择默认内部用户启动
 		list, err := installWSL.GetWSLUsers(option.DistroName)
 		if err != nil {
 			runtime.EventsEmit(a.ctx, "migration:done", map[string]interface{}{
 				"status": "failed",
 				"error":  "发行版中无用户",
 			})
+			global.AppLogger.Error("StartMigration: 配置用户错误,错误信息: %s", err.Error())
 			return err
 		}
+		global.AppLogger.Info("StartMigration: 正在等待用户选择用户")
 		runtime.EventsEmit(a.ctx, "migration:users", list)
 		// 堵塞机制,选择完成之后才继续往下执行
 		userChan := make(chan string)
@@ -260,13 +325,17 @@ func (a *App) StartMigration(option MigrationOptions) error {
 		Install_Path:  &installWSL.WSLpath{Path: option.TargetPath},
 		Auth:          &installWSL.WSLAuth{User: user_cache, Password: "0"},
 	}
+	global.AppLogger.Info("StartMigration: 正在关闭发行版 %s", Info.Linux_Version)
 	time.Sleep(2 * time.Second)
 	runtime.EventsEmit(a.ctx, "migration:progress", "关闭发行版中......")
-
-	if err := a.StopDistro(option.DistroName); err != nil {
-		return err
+	if err := a.StopDistro(Info.Linux_Version); err != nil {
+		global.AppLogger.Error("StartMigration: 关闭发行版 %s 失败: %s", Info.Linux_Version, err.Error())
 	}
-
+	// if err := a.StopDistro(option.DistroName); err != nil {
+	// 	a.appLogger.Error("关闭发行版失败: %s", err.Error())
+	// 	return err
+	// }
+	global.AppLogger.Info("StartMigration: 发行版 %s 已关闭", Info.Linux_Version)
 	runtime.EventsEmit(a.ctx, "migration:progress", "准备工作完成")
 	time.Sleep(2 * time.Second)
 	// 异步处理,防止堵塞
@@ -277,23 +346,41 @@ func (a *App) StartMigration(option MigrationOptions) error {
 
 // 打开发行版内部目录
 func (a *App) OpenDistroFolder(distroName string) error {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("OpenDistroFolder: 正在打开发行版 %s 的文件夹", distroName)
+	}
 	Info := installWSL.WSLinfo{
 		Linux_Version: distroName,
 	}
 	defaultUser, err := runtimeGUI.GetDefaultUser(Info)
 	if err != nil {
 		cmd := exec.Command("explorer.exe", fmt.Sprintf(`\\wsl$\%s\home`, distroName))
-		return cmd.Start()
+		if err := cmd.Start(); err != nil {
+			if global.AppLogger != nil {
+				global.AppLogger.Error("OpenDistroFolder: 打开发行版 %s 文件夹失败: %s", distroName, err.Error())
+			}
+			return err
+		}
+		return nil
 	}
 	// Windows下调用explorer
 	cmd := exec.Command("explorer.exe", fmt.Sprintf(`\\wsl$\%s\home\%s`, distroName, defaultUser))
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("OpenDistroFolder: 打开发行版 %s 文件夹失败: %s", distroName, err.Error())
+		}
+		return err
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("OpenDistroFolder: 已打开发行版 %s 文件夹", distroName)
+	}
+	return nil
 }
 
 // 启动发行版按钮
 func (a *App) StartDistro(name string) {
-	if a.appLogger != nil {
-		a.appLogger.Info("正在启动发行版: %s", name)
+	if global.AppLogger != nil {
+		global.AppLogger.Info("正在启动发行版: %s", name)
 	}
 
 	Info := installWSL.WSLinfo{
@@ -301,32 +388,45 @@ func (a *App) StartDistro(name string) {
 	}
 	installWSL.Start_cmd(Info, "Start")
 
-	if a.appLogger != nil {
-		a.appLogger.Info("发行版 %s 启动命令已发送", name)
+	if global.AppLogger != nil {
+		global.AppLogger.Info("发行版 %s 启动命令已发送", name)
 	}
 }
 
 // .wslconfig全局性能写入配置
 func (a *App) SavePerformanceConfig(config setting.PerformanceConfig) error {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("SavePerformanceConfig: 正在保存性能配置, 内存限制: %dGB, CPU核心数: %d", config.MemoryLimit, config.ProcessorCount)
+	}
 	if err := setting.Wriding_PerformanceConfig(config); err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("SavePerformanceConfig: 保存性能配置失败: %s", err.Error())
+		}
 		return err
 	}
 	Info := installWSL.WSLinfo{
 		Linux_Version: "",
 	}
 	installWSL.Start_cmd(Info, "ShutdownAll")
+	if global.AppLogger != nil {
+		global.AppLogger.Info("SavePerformanceConfig: 性能配置保存成功,已关闭所有WSL发行版")
+	}
 	return nil
 }
 
 // .wslconfig全局性能读取配置
 func (a *App) GetPerformanceConfig() setting.PerformanceConfig {
-	return setting.Rading_PerformanceConfig()
+	config := setting.Rading_PerformanceConfig()
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetPerformanceConfig: 已读取性能配置, 内存限制: %dGB, CPU核心数: %d", config.MemoryLimit, config.ProcessorCount)
+	}
+	return config
 }
 
 // GetLogs 读取日志文件内容（历史日志）
 // 用于前端初始化时加载历史记录
 func (a *App) GetLogs() ([]string, error) {
-	if a.appLogger == nil {
+	if global.AppLogger == nil {
 		return []string{}, nil
 	}
 
@@ -373,11 +473,11 @@ func (a *App) GetLogs() ([]string, error) {
 // PushLogsToFrontend 推送日志到前端
 // 在 startup 中调用
 func (a *App) PushLogsToFrontend() {
-	if a.appLogger == nil || a.ctx == nil {
+	if global.AppLogger == nil || a.ctx == nil {
 		return
 	}
 
-	ch := a.appLogger.GetChan()
+	ch := global.AppLogger.GetChan()
 	go func() {
 		// 使用 for range 监听通道，更优雅
 		for msg := range ch {
@@ -392,7 +492,11 @@ func (a *App) GetWSLVersion() string {
 	Info := installWSL.WSLinfo{
 		Linux_Version: "",
 	}
-	return setting.GetOnlyWslVersion(Info)
+	version := setting.GetOnlyWslVersion(Info)
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetWSLVersion: WSL版本: %s", version)
+	}
+	return version
 }
 
 // 显示详细版本信息
@@ -403,14 +507,24 @@ func (a *App) ShowWSLInfo() string {
 
 	line, err := installWSL.Start_cmd(Info, "Version")
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("ShowWSLInfo: 获取WSL版本信息失败: %s", err.Error())
+		}
 		return err.Error()
 	}
 
-	return installWSL.Reduce_Unicode(line)
+	result := installWSL.Reduce_Unicode(line)
+	if global.AppLogger != nil {
+		global.AppLogger.Info("ShowWSLInfo: WSL版本信息: %s", result)
+	}
+	return result
 }
 
 // 停止发行版
 func (a *App) StopDistro(name string) error {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("StopDistro: 正在停止发行版 %s", name)
+	}
 	// 错误重试计数器
 	var i uint8
 
@@ -439,8 +553,14 @@ func (a *App) StopDistro(name string) error {
 		installWSL.Start_cmd(Info, "Stop")
 		time.Sleep(3 * time.Second)
 		if i >= 10 {
+			if global.AppLogger != nil {
+				global.AppLogger.Error("StopDistro: 暂停发行版 %s 出错,已重试%d次", name, i)
+			}
 			return errors.New("暂停发行版出错,请手动暂停发行版")
 		}
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("StopDistro: 发行版 %s 已停止", name)
 	}
 	return nil
 }
@@ -458,24 +578,42 @@ func (a *App) CheckAndUpdateWSL() {
 
 // GetAPTSource 获取当前发行版的 APT 软件源
 func (a *App) GetAPTSource(distroName string) string {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetAPTSource: 正在获取发行版 %s 的APT软件源", distroName)
+	}
 	Info := installWSL.WSLinfo{
-		Linux_Version: "",
+		Linux_Version: distroName,
 	}
 	version, err := setting.CheckCurrentAptSource(a.ctx, Info)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("GetAPTSource: 获取发行版 %s 软件源失败: %s", distroName, err.Error())
+		}
 		return err.Error()
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetAPTSource: 发行版 %s 当前软件源: %s", distroName, version)
 	}
 	return version
 }
 
 // 换源函数
 func (a *App) ChangeAPTSource(distroName string, source string) string {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("ChangeAPTSource: 正在为发行版 %s 切换软件源为 %s", distroName, source)
+	}
 	Info := installWSL.WSLinfo{
 		Linux_Version: distroName,
 	}
 	result, err := setting.ChangeDistroSource(a.ctx, Info, source)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("ChangeAPTSource: 发行版 %s 换源失败: %s", distroName, err.Error())
+		}
 		return err.Error()
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("ChangeAPTSource: 发行版 %s 换源成功", distroName)
 	}
 	return result
 }
@@ -489,17 +627,36 @@ func (a *App) EnableWSLFeature() {
 
 // 获取发行版下载信息Json
 func (a *App) GetDistroList() ([]networkGUI.DistroItem, error) {
-	return networkGUI.GetDistroList()
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetDistroList: 正在获取发行版列表")
+	}
+	distros, err := networkGUI.GetDistroList()
+	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("GetDistroList: 获取发行版列表失败: %s", err.Error())
+		}
+		return nil, err
+	}
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetDistroList: 成功获取 %d 个发行版", len(distros))
+	}
+	return distros, nil
 }
 
 // 获取最大内存使用 && CPU线程数
 func (a *App) GetSystemSpecs() SystemSpecs {
 	v, err := mem.VirtualMemory()
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("GetSystemSpecs: 获取系统规格失败: %s", err.Error())
+		}
 		return SystemSpecs{}
 	}
 
 	totalGB := int(v.Total / 1024 / 1024 / 1024)
+	if global.AppLogger != nil {
+		global.AppLogger.Info("GetSystemSpecs: 系统内存: %dGB, CPU逻辑核心数: %d", totalGB, run.NumCPU())
+	}
 	return SystemSpecs{
 
 		TotalMemoryGB: totalGB,
@@ -532,20 +689,20 @@ func (a *App) TriggerUpdateAlert() {
 
 // 获取发行版内部安装包
 func (a *App) GetInstalledPackages(distroName string) ([]runtimeGUI.SoftwarePackage, error) {
-	if a.appLogger != nil {
-		a.appLogger.Info("正在获取发行版 %s 的软件包列表...", distroName)
+	if global.AppLogger != nil {
+		global.AppLogger.Info("正在获取发行版 %s 的软件包列表...", distroName)
 	}
 
 	package_json, err := runtimeGUI.GetInstalledPackages(distroName)
 	if err != nil {
-		if a.appLogger != nil {
-			a.appLogger.Info("获取软件包列表失败: %v", err)
+		if global.AppLogger != nil {
+			global.AppLogger.Info("获取软件包列表失败: %v", err)
 		}
 		return nil, err
 	}
 
-	if a.appLogger != nil {
-		a.appLogger.Info("成功获取 %d 个软件包", len(package_json))
+	if global.AppLogger != nil {
+		global.AppLogger.Info("成功获取 %d 个软件包", len(package_json))
 	}
 	return package_json, nil
 }

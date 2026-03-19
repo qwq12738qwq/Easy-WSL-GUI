@@ -4,6 +4,7 @@
 package setting
 
 import (
+	"Golang-WSL-GUI/src/Global"
 	"Golang-WSL-GUI/src/installWSL"
 	"context"
 	"fmt"
@@ -144,13 +145,23 @@ func detectFamily(d DistroVersion) distroFamily {
 // 返回值统一为 SourceOfficial / SourceAliyun / SourceTuna / SourceUnknown
 // 前端可以直接用该结果高亮当前源。
 func CheckCurrentAptSource(_ context.Context, info installWSL.WSLinfo) (string, error) {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("CheckCurrentAptSource: 正在检测发行版 %s 的软件源", info.Linux_Version)
+	}
+
 	distro, err := GetSimpleDistroInfo(info)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("CheckCurrentAptSource: 获取发行版 %s 系统信息失败: %s", info.Linux_Version, err.Error())
+		}
 		return "", fmt.Errorf("获取系统信息失败: %v", err)
 	}
 
 	family := detectFamily(distro)
 	if family == familyUnknown {
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("CheckCurrentAptSource: 发行版 %s 家族未知", info.Linux_Version)
+		}
 		return SourceUnknown, nil
 	}
 
@@ -175,6 +186,9 @@ func CheckCurrentAptSource(_ context.Context, info installWSL.WSLinfo) (string, 
 
 	if err != nil {
 		// 读取失败视为未知源, 但不视为致命错误
+		if global.AppLogger != nil {
+			global.AppLogger.Warning("CheckCurrentAptSource: 读取发行版 %s 软件源配置失败", info.Linux_Version)
+		}
 		return SourceUnknown, nil
 	}
 
@@ -184,18 +198,33 @@ func CheckCurrentAptSource(_ context.Context, info installWSL.WSLinfo) (string, 
 	// 优先判断是否为常见国内镜像
 	switch {
 	case strings.Contains(contentLower, "mirrors.aliyun.com"):
+		if global.AppLogger != nil {
+			global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用阿里云镜像", info.Linux_Version)
+		}
 		return SourceAliyun, nil
 	case strings.Contains(contentLower, "mirrors.tuna.tsinghua.edu.cn"):
+		if global.AppLogger != nil {
+			global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用清华镜像", info.Linux_Version)
+		}
 		return SourceTuna, nil
 	case strings.Contains(contentLower, "mirrors.cloud.tencent.com"), strings.Contains(contentLower, "mirrors.tencent.com"):
+		if global.AppLogger != nil {
+			global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用腾讯云镜像", info.Linux_Version)
+		}
 		return SourceTencent, nil
 	case strings.Contains(contentLower, "mirrors.ustc.edu.cn"):
+		if global.AppLogger != nil {
+			global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用中科大镜像", info.Linux_Version)
+		}
 		return SourceUSTC, nil
 	}
 
 	// 其次根据不同家族的官方域名判断是否仍在使用官方源
 	if trimmed == "" {
 		// 文件为空时, 默认为官方源 (系统可能还在使用默认配置)
+		if global.AppLogger != nil {
+			global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用官方源", info.Linux_Version)
+		}
 		return SourceOfficial, nil
 	}
 
@@ -206,21 +235,33 @@ func CheckCurrentAptSource(_ context.Context, info installWSL.WSLinfo) (string, 
 			strings.Contains(contentLower, "deb.debian.org") ||
 			strings.Contains(contentLower, "security.debian.org") ||
 			strings.Contains(contentLower, "http.kali.org") {
+			if global.AppLogger != nil {
+				global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用官方源", info.Linux_Version)
+			}
 			return SourceOfficial, nil
 		}
 	case familyRHEL:
 		if strings.Contains(contentLower, "download.fedoraproject.org") ||
 			strings.Contains(contentLower, "repo.almalinux.org") ||
 			strings.Contains(contentLower, "mirrors.almalinux.org") {
+			if global.AppLogger != nil {
+				global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用官方源", info.Linux_Version)
+			}
 			return SourceOfficial, nil
 		}
 	case familySUSE:
 		if strings.Contains(contentLower, "download.opensuse.org") {
+			if global.AppLogger != nil {
+				global.AppLogger.Info("CheckCurrentAptSource: 发行版 %s 当前使用官方源", info.Linux_Version)
+			}
 			return SourceOfficial, nil
 		}
 	}
 
 	// 既不是已知官方域名, 也不是已有的镜像站, 统一视为 unknown
+	if global.AppLogger != nil {
+		global.AppLogger.Warning("CheckCurrentAptSource: 发行版 %s 当前软件源未知", info.Linux_Version)
+	}
 	return SourceUnknown, nil
 }
 
@@ -242,35 +283,60 @@ func CheckCurrentAptSource(_ context.Context, info installWSL.WSLinfo) (string, 
 //
 // 返回值: "success" 表示切换成功, 其余情况返回具体错误信息。
 func ChangeDistroSource(_ context.Context, info installWSL.WSLinfo, source string) (string, error) {
+	if global.AppLogger != nil {
+		global.AppLogger.Info("ChangeDistroSource: 正在为发行版 %s 切换软件源为 %s", info.Linux_Version, source)
+	}
+
 	if source != SourceOfficial && source != SourceAliyun && source != SourceTuna && source != SourceTencent && source != SourceUSTC {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("ChangeDistroSource: 不支持的软件源类型: %s", source)
+		}
 		return "", fmt.Errorf("不支持的软件源类型: %s", source)
 	}
 
 	distro, err := GetSimpleDistroInfo(info)
 	if err != nil {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("ChangeDistroSource: 获取发行版 %s 系统信息失败: %s", info.Linux_Version, err.Error())
+		}
 		return "", fmt.Errorf("获取系统信息失败: %v", err)
 	}
 
 	family := detectFamily(distro)
 	if family == familyUnknown {
+		if global.AppLogger != nil {
+			global.AppLogger.Error("ChangeDistroSource: 当前系统 %s 暂不支持换源", distro.Name)
+		}
 		return "", fmt.Errorf("当前系统暂不支持换源: %s", distro.Name)
 	}
 
 	switch family {
 	case familyDebian:
 		if err := changeDebianFamilySource(info, distro, source); err != nil {
+			if global.AppLogger != nil {
+				global.AppLogger.Error("ChangeDistroSource: Debian系换源失败: %s", err.Error())
+			}
 			return "", err
 		}
 	case familyRHEL:
 		if err := changeYumLikeSource(info, source); err != nil {
+			if global.AppLogger != nil {
+				global.AppLogger.Error("ChangeDistroSource: DNF系换源失败: %s", err.Error())
+			}
 			return "", err
 		}
 	case familySUSE:
 		if err := changeZypperSource(info, source); err != nil {
+			if global.AppLogger != nil {
+				global.AppLogger.Error("ChangeDistroSource: Zypper系换源失败: %s", err.Error())
+			}
 			return "", err
 		}
 	}
 
+	if global.AppLogger != nil {
+		global.AppLogger.Info("ChangeDistroSource: 发行版 %s 软件源切换成功", info.Linux_Version)
+	}
 	return "success", nil
 }
 
