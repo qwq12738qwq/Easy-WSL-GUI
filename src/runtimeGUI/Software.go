@@ -4,10 +4,12 @@
 package runtimeGUI
 
 import (
+	global "Golang-WSL-GUI/src/Global"
 	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -25,13 +27,15 @@ func GetInstalledPackages(distroName string) ([]SoftwarePackage, error) {
 	// if _, err := os.Stat(filePath); os.IsNotExist(err) {
 	// 	return []SoftwarePackage{}, nil
 	// }
-
 	file, err := os.Open(filePath)
 	if err != nil {
 		// 更换成Powershell,使用cat /var/lib/dpkg/status读取
 		return nil, errors.New("打开WSL文件失败")
 	}
 	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	global.AppLogger.Info("已读取到软件列表", string(content))
 
 	var packages []SoftwarePackage
 	var currentPkg SoftwarePackage

@@ -451,24 +451,13 @@ func (a *App) GetLogs() ([]string, error) {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	// 逆序返回最新的100行？或者正序？
-	// 一般日志查看器是正序的，最新的在最后
-	// 但如果文件很大，几万行，拿太多不好
-	// 我们只返回最后 500 行
+	// 只返回最后 500 行
 	start := 0
 	if len(lines) > 500 {
 		start = len(lines) - 500
 	}
 	return lines[start:], nil
 }
-
-// GetRealtimeLogs 实时日志流
-// 返回通道接收器 (不推荐 Wails 这样做)
-// Wails 推荐使用 Events
-// 所以我们不通过这个函数返回通道，
-// 而是使用 EventsOn 在前端监听 "log-event"
-// 这里保留结构，但实际不用它返回数据
-// 实际上，我们在后端启动一个 goroutine 往 frontend 推消息
 
 // PushLogsToFrontend 推送日志到前端
 // 在 startup 中调用

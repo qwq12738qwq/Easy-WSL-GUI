@@ -4,7 +4,7 @@
 package setting
 
 import (
-	"Golang-WSL-GUI/src/Global"
+	global "Golang-WSL-GUI/src/Global"
 	"Golang-WSL-GUI/src/installWSL"
 	"strings"
 )
